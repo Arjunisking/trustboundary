@@ -34,6 +34,10 @@ test("@trustboundary/cli returns stable JSON output", async () => {
   assert.equal(json.enforcementEnabled, false);
   assert.equal(json.exitCode, 0);
   assert.equal(json.findings[0].ruleId, "exposed-secrets");
+  assert.equal(
+    json.findings.some((finding) => finding.ruleId === "unsafe-mutation"),
+    true
+  );
   assert.equal(json.findings[0].severity, "critical");
   assert.equal(json.findings[0].confidence, "confirmed");
 });
@@ -53,8 +57,9 @@ test("@trustboundary/cli writes escaped HTML report", async () => {
   const html = await readFile(reportPath, "utf8");
 
   assert.equal(result.reportPath, reportPath);
-  assert.match(html, /TrustBoundary findings: 1/);
+  assert.match(html, /TrustBoundary findings: 5/);
   assert.match(html, /app\/admin\/page\.tsx/);
+  assert.match(html, /unsafe-mutation/);
 });
 
 test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mode", async () => {

@@ -71,6 +71,33 @@ test("@trustboundary/action can disable enforcement", async () => {
   assert.equal(result.exitCode, 0);
 });
 
+test("@trustboundary/action does not block on unsafe-mutation likely findings", async () => {
+  const unsafeOnlyDir = await mkdtemp(path.join(os.tmpdir(), "trustboundary-action-unsafe-"));
+  await writeFile(
+    path.join(unsafeOnlyDir, "route.ts"),
+    [
+      "export async function POST(request: Request) {",
+      "  const body = await request.json();",
+      '  await supabase.from("users").insert(body);',
+      "}"
+    ].join("\n"),
+    "utf8"
+  );
+  const result = await runAction({
+    targetPath: unsafeOnlyDir,
+    enforce: true
+  });
+
+  assert.equal(result.summary.totalFindings, 1);
+  assert.equal(result.summary.confirmedCriticalCount, 0);
+  assert.equal(result.findings[0]?.ruleId, "unsafe-mutation");
+  assert.equal(result.findings[0]?.severity, "high");
+  assert.equal(result.findings[0]?.confidence, "likely");
+  assert.equal(result.blocked, false);
+  assert.equal(result.exitCode, 0);
+  assert.match(formatActionSummary(result), /No Confirmed Critical issues found\./);
+});
+
 test("@trustboundary/action writes declared outputs", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "trustboundary-action-output-"));
   const outputFile = path.join(tempDir, "github-output.txt");
@@ -83,7 +110,7 @@ test("@trustboundary/action writes declared outputs", async () => {
   await writeActionOutputs(createActionOutputs(result), outputFile);
   const outputContents = await readFile(outputFile, "utf8");
 
-  assert.match(outputContents, /^total_findings=1/m);
+  assert.match(outputContents, /^total_findings=5/m);
   assert.match(outputContents, /^confirmed_critical_count=1/m);
   assert.match(outputContents, /^blocked=true/m);
   assert.match(outputContents, /^report_path=.*report\.html/m);

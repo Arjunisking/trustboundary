@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-import { EXPOSED_SUPABASE_SERVICE_ROLE_RULE } from "@trustboundary/rules";
+import { SCANNER_RULES } from "@trustboundary/rules";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -99,31 +99,41 @@ export async function scanRepository(rootPath: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   for (const file of files) {
-    const matches = EXPOSED_SUPABASE_SERVICE_ROLE_RULE.matchFile({
-      relativePath: file.relativePath,
-      content: file.content
-    });
-
-    for (const match of matches) {
-      findings.push({
-        id: createFindingId(
-          EXPOSED_SUPABASE_SERVICE_ROLE_RULE.ruleId,
-          file.relativePath,
-          match.line
-        ),
-        ruleId: EXPOSED_SUPABASE_SERVICE_ROLE_RULE.ruleId,
-        severity: "critical",
-        confidence: "confirmed",
-        file: file.relativePath,
-        line: match.line,
-        message: match.message,
-        exploitPath: match.exploitPath,
-        patch: match.patch
+    for (const rule of SCANNER_RULES) {
+      const matches = rule.matchFile({
+        relativePath: file.relativePath,
+        content: file.content
       });
+
+      for (const match of matches) {
+        findings.push({
+          id: createFindingId(rule.ruleId, file.relativePath, match.line),
+          ruleId: rule.ruleId,
+          severity: rule.severity,
+          confidence: rule.confidence,
+          file: file.relativePath,
+          line: match.line,
+          message: match.message,
+          exploitPath: match.exploitPath,
+          patch: match.patch
+        });
+      }
     }
   }
 
-  return findings;
+  return findings.sort((left, right) => {
+    const fileCompare = left.file.localeCompare(right.file);
+    if (fileCompare !== 0) {
+      return fileCompare;
+    }
+
+    const lineCompare = (left.line ?? 0) - (right.line ?? 0);
+    if (lineCompare !== 0) {
+      return lineCompare;
+    }
+
+    return left.ruleId.localeCompare(right.ruleId);
+  });
 }
 
 export function getConfirmedCriticalFindings(findings: Finding[]): Finding[] {
