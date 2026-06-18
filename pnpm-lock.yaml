@@ -214,7 +214,11 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  packages/action: {}
+  packages/action:
+    dependencies:
+      '@trustboundary/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/cli:
     dependencies:

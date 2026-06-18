@@ -1,0 +1,14 @@
+name: TrustBoundary
+description: Deterministic pre-deploy scan for confirmed critical TrustBoundary findings
+inputs:
+  target_path:
+    description: Repository path to scan
+    required: false
+    default: .
+  enforce:
+    description: Fail only when Confirmed Critical findings exist
+    required: false
+    default: "true"
+runs:
+  using: node20
+  main: packages/action/dist/bin.js
