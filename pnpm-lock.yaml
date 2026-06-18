@@ -218,7 +218,11 @@ importers:
 
   packages/cli: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@trustboundary/rules':
+        specifier: workspace:*
+        version: link:../rules
 
   packages/report: {}
 
