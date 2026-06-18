@@ -216,7 +216,14 @@ importers:
 
   packages/action: {}
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@trustboundary/core':
+        specifier: workspace:*
+        version: link:../core
+      '@trustboundary/report':
+        specifier: workspace:*
+        version: link:../report
 
   packages/core:
     dependencies:
@@ -224,7 +231,11 @@ importers:
         specifier: workspace:*
         version: link:../rules
 
-  packages/report: {}
+  packages/report:
+    dependencies:
+      '@trustboundary/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/rules: {}
 

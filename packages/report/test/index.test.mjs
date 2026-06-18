@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { escapeHtml, renderPlaceholderReport } from "../dist/index.js";
+import { escapeHtml, renderHtmlReport } from "../dist/index.js";
 
 test("@trustboundary/report escapes hostile HTML", () => {
   assert.equal(
@@ -11,18 +11,49 @@ test("@trustboundary/report escapes hostile HTML", () => {
 });
 
 test("@trustboundary/report renders escaped findings", () => {
-  const html = renderPlaceholderReport([
-    {
-      ruleId: "exposed-secrets",
-      severity: "critical",
-      file: "app/page.tsx",
-      message: `<img src=x onerror="alert('x')">`
-    }
-  ]);
+  const html = renderHtmlReport({
+    targetPath: "examples/insecure-next-supabase",
+    summary: {
+      totalFindings: 1,
+      confirmedCriticalCount: 1,
+      blocking: true,
+      statusMessage: "Confirmed Critical findings: 1"
+    },
+    findings: [
+      {
+        id: "finding-1",
+        ruleId: "exposed-secrets",
+        severity: "critical",
+        confidence: "confirmed",
+        file: "app/page.tsx",
+        line: 7,
+        message: `<img src=x onerror="alert('x')">`,
+        exploitPath: `path <script>alert("x")</script>`,
+        patch: `remove "key"`
+      }
+    ]
+  });
 
   assert.match(
     html,
     /&lt;img src=x onerror=&quot;alert\(&#39;x&#39;\)&quot;&gt;/
   );
   assert.equal(html.includes("<img src=x onerror="), false);
+  assert.equal(html.includes("<script>alert(\"x\")</script>"), false);
+});
+
+test("@trustboundary/report uses safe summary wording for clean scans", () => {
+  const html = renderHtmlReport({
+    targetPath: "examples/clean",
+    summary: {
+      totalFindings: 0,
+      confirmedCriticalCount: 0,
+      blocking: false,
+      statusMessage: "No Confirmed Critical issues found."
+    },
+    findings: []
+  });
+
+  assert.match(html, /No Confirmed Critical issues found\./);
+  assert.equal(html.includes("the app is secure"), false);
 });

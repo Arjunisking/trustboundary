@@ -24,6 +24,13 @@ export interface RuleResult {
   findings: Finding[];
 }
 
+export interface ScanSummary {
+  totalFindings: number;
+  confirmedCriticalCount: number;
+  blocking: boolean;
+  statusMessage: string;
+}
+
 export interface ScanFile {
   absolutePath: string;
   relativePath: string;
@@ -31,6 +38,7 @@ export interface ScanFile {
 }
 
 export const NO_FINDINGS: Finding[] = [];
+export const NO_CONFIRMED_CRITICAL_MESSAGE = "No Confirmed Critical issues found.";
 
 const TEXT_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
 const SKIPPED_DIRECTORIES = new Set([
@@ -116,4 +124,25 @@ export async function scanRepository(rootPath: string): Promise<Finding[]> {
   }
 
   return findings;
+}
+
+export function getConfirmedCriticalFindings(findings: Finding[]): Finding[] {
+  return findings.filter(
+    (finding) =>
+      finding.severity === "critical" && finding.confidence === "confirmed"
+  );
+}
+
+export function summarizeFindings(findings: Finding[]): ScanSummary {
+  const confirmedCriticalCount = getConfirmedCriticalFindings(findings).length;
+
+  return {
+    totalFindings: findings.length,
+    confirmedCriticalCount,
+    blocking: confirmedCriticalCount > 0,
+    statusMessage:
+      confirmedCriticalCount > 0
+        ? `Confirmed Critical findings: ${confirmedCriticalCount}`
+        : NO_CONFIRMED_CRITICAL_MESSAGE
+  };
 }
