@@ -21,12 +21,12 @@ test("@trustboundary/core detects client-side service role exposure", async () =
 
   assert.equal(findings.length, 1);
   assert.deepEqual(findings[0], {
-    id: "exposed-secrets:app/admin/page.tsx:4",
+    id: "exposed-secrets:app/admin/page.tsx:3",
     ruleId: "exposed-secrets",
     severity: "critical",
     confidence: "confirmed",
     file: "app/admin/page.tsx",
-    line: 4,
+    line: 3,
     message: "Supabase service role env key referenced in client-side code.",
     exploitPath:
       "Anyone can extract the key from the browser bundle and bypass database permissions.",
