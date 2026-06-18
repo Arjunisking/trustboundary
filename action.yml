@@ -9,6 +9,19 @@ inputs:
     description: Fail only when Confirmed Critical findings exist
     required: false
     default: "true"
+  report_path:
+    description: Optional HTML report path written inside workspace
+    required: false
+    default: ""
+outputs:
+  total_findings:
+    description: Total findings detected by TrustBoundary
+  confirmed_critical_count:
+    description: Confirmed Critical findings detected by TrustBoundary
+  blocked:
+    description: Whether action blocked because enforcement was enabled and Confirmed Critical findings existed
+  report_path:
+    description: HTML report path when report output was requested
 runs:
   using: node20
   main: packages/action/dist/bin.js

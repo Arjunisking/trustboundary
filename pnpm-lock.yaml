@@ -219,6 +219,9 @@ importers:
       '@trustboundary/core':
         specifier: workspace:*
         version: link:../core
+      '@trustboundary/report':
+        specifier: workspace:*
+        version: link:../report
 
   packages/cli:
     dependencies:

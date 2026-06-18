@@ -20,6 +20,8 @@ export interface CliScanResult {
   targetPath: string;
   summary: ScanSummary;
   findings: Finding[];
+  hasBlockingFindings: boolean;
+  enforcementEnabled: boolean;
   reportPath?: string;
   exitCode: number;
 }
@@ -30,6 +32,7 @@ export async function runScanCommand(
 ): Promise<CliScanResult> {
   const findings = await scanRepository(targetPath);
   const summary = summarizeFindings(findings);
+  const enforcementEnabled = options.enforce ?? false;
   let reportPath: string | undefined;
 
   if (options.reportPath) {
@@ -50,8 +53,10 @@ export async function runScanCommand(
     targetPath,
     summary,
     findings,
+    hasBlockingFindings: summary.blocking,
+    enforcementEnabled,
     ...(reportPath ? { reportPath } : {}),
-    exitCode: options.enforce && summary.blocking ? 1 : 0
+    exitCode: enforcementEnabled && summary.blocking ? 1 : 0
   };
 }
 

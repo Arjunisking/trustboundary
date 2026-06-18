@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
-import { formatActionSummary, parseActionInputs, runAction } from "./index.js";
+import {
+  createActionOutputs,
+  formatActionSummary,
+  parseActionInputs,
+  runAction,
+  writeActionOutputs
+} from "./index.js";
 
 try {
   const inputs = parseActionInputs(process.env);
   const result = await runAction(inputs);
+  await writeActionOutputs(createActionOutputs(result), process.env.GITHUB_OUTPUT);
 
   process.stdout.write(`${formatActionSummary(result)}\n`);
   process.exitCode = result.exitCode;

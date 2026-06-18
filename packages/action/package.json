@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@trustboundary/core": "workspace:*"
+    "@trustboundary/core": "workspace:*",
+    "@trustboundary/report": "workspace:*"
   },
   "main": "dist/index.js",
   "types": "src/index.ts",
@@ -20,6 +21,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "pnpm --filter @trustboundary/core build && pnpm run build && node --test test/**/*.test.mjs"
+    "test": "pnpm --filter @trustboundary/core build && pnpm --filter @trustboundary/report build && pnpm run build && node --test test/**/*.test.mjs"
   }
 }

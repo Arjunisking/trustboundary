@@ -30,6 +30,9 @@ test("@trustboundary/cli returns stable JSON output", async () => {
 
   assert.equal(json.targetPath, insecureFixture);
   assert.equal(json.summary.confirmedCriticalCount, 1);
+  assert.equal(json.hasBlockingFindings, true);
+  assert.equal(json.enforcementEnabled, false);
+  assert.equal(json.exitCode, 0);
   assert.equal(json.findings[0].ruleId, "exposed-secrets");
   assert.equal(json.findings[0].severity, "critical");
   assert.equal(json.findings[0].confidence, "confirmed");
@@ -58,6 +61,9 @@ test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mo
   const normal = await runScanCommand(insecureFixture);
   const enforced = await runScanCommand(insecureFixture, { enforce: true });
 
+  assert.equal(normal.hasBlockingFindings, true);
+  assert.equal(normal.enforcementEnabled, false);
   assert.equal(normal.exitCode, 0);
+  assert.equal(enforced.enforcementEnabled, true);
   assert.equal(enforced.exitCode, 1);
 });
