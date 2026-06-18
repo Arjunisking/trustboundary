@@ -1,59 +1,58 @@
-@'
 # AGENTS.md
 
-## Project overview
+## Project Overview
 - Project: TrustBoundary
 - Type: Open-source TypeScript security scanner
-- Target users: vibe coders, AI automation agencies, fast-moving builders, and workflow developers
-- Main goal: detect the most dangerous AI-generated security mistakes before deployment
+- Goal: block dangerous AI-generated security mistakes before deploy
+- Users: vibe coders, AI automation agencies, fast-moving builders
 - Package manager: pnpm
-- Language: TypeScript
 - Runtime: Node.js
 
-## Packages
-- packages/core: scanner engine, evidence graph, rules, findings
-- packages/cli: command-line interface
-- packages/action: GitHub Action wrapper
-- packages/rules: embedded deterministic rules and fixtures
-- packages/report: static HTML report generator
+## Workspace
+- `packages/core`: scanner types, engine contracts, findings
+- `packages/cli`: command wrapper
+- `packages/action`: GitHub Action wrapper
+- `packages/rules`: deterministic rules and fixtures
+- `packages/report`: static HTML report generator
+- `examples/insecure-next-supabase`: fixture repo for first vertical slice
+- `docs`: PRD, technical design, MVP rules
 
-## Common commands
-- Install: pnpm install
-- Build: pnpm build
-- Test: pnpm test
-- Typecheck: pnpm typecheck
-- Format: pnpm format
+## Commands
+- `pnpm install`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
 
-## Engineering rules
-- Keep v1 deterministic.
-- Do not use LLMs as the source of truth for findings.
-- Do not add dependencies without justification.
-- Never hardcode secrets.
-- Never log secrets, tokens, credentials, or PII.
-- Prefer small, reviewable changes.
-- Add tests for scanner rules and report generation.
-- Escape all user-controlled content in generated HTML.
-
-## Product rules
+## Security Rules
+- Keep findings deterministic.
+- Do not use LLM output as finding truth.
+- Do not execute scanned repo code.
+- Do not import scanned repo files.
+- Do not run package-manager scripts inside scanned repos.
+- Treat scanned files as hostile input.
+- Escape all user-controlled HTML report content.
+- Never hardcode or log secrets, tokens, credentials, PII.
 - Never claim the app is secure.
-- Say "No Confirmed Critical issues found" instead.
-- Block only Confirmed Critical issues by default.
-- Warn on Likely and Unverified risks.
-- Evidence over assumptions.
-- Fixes over lectures.
+- Use `No Confirmed Critical issues found`.
+- Block Confirmed Critical only by default.
+- Warn on Likely and Unverified.
 
-## V1 scope
-TrustBoundary V1 detects:
-1. Exposed secrets
-2. Unsafe mutations
-3. Broken authorization
-4. Supabase/Firebase rule failures
-5. Webhook and AI-agent abuse
+## Review Guidelines
+- Prefer small, reviewable vertical slices.
+- Keep package boundaries clean.
+- Avoid unnecessary dependencies.
+- Require tests for scanner rules and report escaping.
+- Prefer evidence, exploit path, and fix guidance over broad claims.
+- Reject out-of-scope features for V1:
+  - dashboards
+  - IDE extensions
+  - remote rule feeds
+  - automatic patch commits
 
-## Done means
-- TypeScript passes.
-- Relevant tests pass.
-- Build passes.
-- Generated report escapes content safely.
-- Final response lists files changed, checks run, and remaining risks.
-'@ | Set-Content AGENTS.md
+## Done Criteria
+- `pnpm install` passes.
+- `pnpm typecheck` passes.
+- `pnpm test` passes.
+- `pnpm build` passes.
+- Report output escapes hostile content safely.
+- Final response lists files changed, commands run, results, remaining risks.
