@@ -460,11 +460,15 @@ function isSqlSink(
 }
 
 function getSensitiveSinkNode(node: ts.Node): SensitiveSink | null {
+  const line =
+    node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1;
+  const end = getContainingStatementEnd(node);
+
   if (ts.isTaggedTemplateExpression(node) && isSqlSink(node)) {
     return {
       node,
-      line: node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1,
-      end: node.getEnd()
+      line,
+      end
     };
   }
 
@@ -482,8 +486,8 @@ function getSensitiveSinkNode(node: ts.Node): SensitiveSink | null {
   if (isSupabaseFromChain(node) && terminalName && SUPABASE_SINK_METHOD_NAMES.has(terminalName)) {
     return {
       node,
-      line: node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1,
-      end: node.getEnd()
+      line,
+      end
     };
   }
 
@@ -494,20 +498,34 @@ function getSensitiveSinkNode(node: ts.Node): SensitiveSink | null {
   ) {
     return {
       node,
-      line: node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1,
-      end: node.getEnd()
+      line,
+      end
     };
   }
 
   if (isSqlSink(node)) {
     return {
       node,
-      line: node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1,
-      end: node.getEnd()
+      line,
+      end
     };
   }
 
   return null;
+}
+
+function getContainingStatementEnd(node: ts.Node): number {
+  let current: ts.Node | undefined = node;
+
+  while (current) {
+    if (ts.isStatement(current)) {
+      return current.getEnd();
+    }
+
+    current = current.parent;
+  }
+
+  return node.getEnd();
 }
 
 function collectSensitiveSinks(body: ts.ConciseBody): SensitiveSink[] {

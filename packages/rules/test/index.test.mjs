@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   RULE_IDS,
+  matchBrokenAuthorization,
   matchExposedSupabaseServiceRoleKey,
   matchUnsafeMutation
 } from "../dist/index.js";
@@ -133,4 +134,102 @@ test("does not flag explicit allowlisted object literals", () => {
   });
 
   assert.deepEqual(matches, []);
+});
+
+test("detects unauthenticated Prisma write in Next.js API route", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/projects/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.json();",
+      "  await prisma.project.create({ data: body });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 3);
+  assert.equal(matches[0]?.severity, "high");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("detects unauthenticated sensitive database read in Next.js API route", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/reports/route.ts",
+    content: [
+      "export async function GET() {",
+      '  const rows = await supabase.from("reports").select("*");',
+      "  return Response.json(rows);",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 2);
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("does not flag route with getServerSession before database access", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/me/route.ts",
+    content: [
+      'import { getServerSession } from "next-auth";',
+      "",
+      "export async function GET() {",
+      "  const session = await getServerSession();",
+      "  if (!session?.user?.id) return Response.json({ error: 'unauthorized' }, { status: 401 });",
+      "  return Response.json(await prisma.user.findUnique({ where: { userId: session.user.id } }));",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag route with supabase.auth.getUser before database access", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/profile/route.ts",
+    content: [
+      "export async function GET() {",
+      "  const user = await supabase.auth.getUser();",
+      "  if (!user.data.user) return Response.json({ error: 'unauthorized' }, { status: 401 });",
+      '  return Response.json(await supabase.from("profiles").select("*").eq("userId", user.data.user.id));',
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag public health route without database sink", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/health/route.ts",
+    content: [
+      "export async function GET() {",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("flags auth without ownership constraint as likely broken authorization", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/billing/route.ts",
+    content: [
+      "export async function GET() {",
+      "  const session = await getServerSession();",
+      "  if (!session?.user?.id) return Response.json({ error: 'unauthorized' }, { status: 401 });",
+      "  const invoices = await prisma.invoice.findMany();",
+      "  return Response.json(invoices);",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 4);
+  assert.equal(matches[0]?.severity, "high");
+  assert.equal(matches[0]?.confidence, "likely");
 });
