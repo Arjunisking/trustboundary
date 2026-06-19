@@ -109,8 +109,8 @@ export async function scanRepository(rootPath: string): Promise<Finding[]> {
         findings.push({
           id: createFindingId(rule.ruleId, file.relativePath, match.line),
           ruleId: rule.ruleId,
-          severity: rule.severity,
-          confidence: rule.confidence,
+          severity: match.severity ?? rule.severity,
+          confidence: match.confidence ?? rule.confidence,
           file: file.relativePath,
           line: match.line,
           message: match.message,
