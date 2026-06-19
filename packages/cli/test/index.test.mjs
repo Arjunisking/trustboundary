@@ -57,7 +57,7 @@ test("@trustboundary/cli writes escaped HTML report", async () => {
   const html = await readFile(reportPath, "utf8");
 
   assert.equal(result.reportPath, reportPath);
-  assert.match(html, /TrustBoundary findings: 15/);
+  assert.match(html, /TrustBoundary findings: 13/);
   assert.match(html, /app\/admin\/page\.tsx/);
   assert.match(html, /broken-authorization/);
   assert.match(html, /unsafe-mutation/);

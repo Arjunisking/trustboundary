@@ -809,6 +809,11 @@ function isWebhookRouteSignal(file: RuleFile): boolean {
   );
 }
 
+function isClearlyWebhookRouteFile(file: RuleFile): boolean {
+  const relativePath = normalizePath(file.relativePath);
+  return isWebhookTargetPath(relativePath) && isWebhookRouteSignal(file);
+}
+
 function collectWebhookBodyReadMarkers(body: ts.ConciseBody): number[] {
   const markers: number[] = [];
 
@@ -1265,6 +1270,10 @@ export function matchBrokenAuthorization(file: RuleFile): RuleMatch[] {
     return [];
   }
 
+  if (isRouteFile && isClearlyWebhookRouteFile(file)) {
+    return [];
+  }
+
   const handlers = isRouteFile
     ? getExportedApiHandlers(sourceFile)
     : getExportedServerActions(sourceFile);
@@ -1291,7 +1300,7 @@ export function matchWebhookSignatureVerification(file: RuleFile): RuleMatch[] {
   const sourceFile = createSourceFile(file);
   const relativePath = normalizePath(file.relativePath);
 
-  if (!isWebhookTargetPath(relativePath)) {
+  if (!isWebhookTargetPath(relativePath) || !isClearlyWebhookRouteFile(file)) {
     return [];
   }
 

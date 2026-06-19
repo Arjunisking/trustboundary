@@ -235,6 +235,21 @@ test("flags auth without ownership constraint as likely broken authorization", (
   assert.equal(matches[0]?.confidence, "likely");
 });
 
+test("does not flag insecure webhook route with broken-authorization", () => {
+  const matches = matchBrokenAuthorization({
+    relativePath: "app/api/webhooks/stripe/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.text();",
+      "  await prisma.event.create({ data: { payload: body } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
 test("detects Stripe webhook raw body and DB write without constructEvent", () => {
   const matches = matchWebhookSignatureVerification({
     relativePath: "app/api/webhooks/stripe/route.ts",
@@ -291,20 +306,26 @@ test("flags webhook signature header reads without visible verification as likel
 });
 
 test("does not flag Stripe webhook with constructEvent before DB write", () => {
+  const content = [
+    "export async function POST(request: Request) {",
+    '  const signature = request.headers.get("stripe-signature");',
+    "  const body = await request.text();",
+    "  const event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);",
+    '  await prisma.event.create({ data: { eventId: event.id } });',
+    "  return Response.json({ ok: true });",
+    "}"
+  ].join("\n");
   const matches = matchWebhookSignatureVerification({
     relativePath: "app/api/webhooks/stripe-safe/route.ts",
-    content: [
-      "export async function POST(request: Request) {",
-      '  const signature = request.headers.get("stripe-signature");',
-      "  const body = await request.text();",
-      "  const event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);",
-      '  await prisma.event.create({ data: { eventId: event.id } });',
-      "  return Response.json({ ok: true });",
-      "}"
-    ].join("\n")
+    content
+  });
+  const brokenAuthMatches = matchBrokenAuthorization({
+    relativePath: "app/api/webhooks/stripe-safe/route.ts",
+    content
   });
 
   assert.deepEqual(matches, []);
+  assert.deepEqual(brokenAuthMatches, []);
 });
 
 test("does not flag Clerk/Svix webhook with Webhook.verify before mutation", () => {

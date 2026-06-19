@@ -110,7 +110,7 @@ test("@trustboundary/action writes declared outputs", async () => {
   await writeActionOutputs(createActionOutputs(result), outputFile);
   const outputContents = await readFile(outputFile, "utf8");
 
-  assert.match(outputContents, /^total_findings=15/m);
+  assert.match(outputContents, /^total_findings=13/m);
   assert.match(outputContents, /^confirmed_critical_count=3/m);
   assert.match(outputContents, /^blocked=true/m);
   assert.match(outputContents, /^report_path=.*report\.html/m);

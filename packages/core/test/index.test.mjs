@@ -32,7 +32,7 @@ test("@trustboundary/core walks fixture files as untrusted text", async () => {
 test("@trustboundary/core detects exposed secrets, unsafe mutations, broken authorization, and webhook abuse", async () => {
   const findings = await scanRepository(fixtureRoot);
 
-  assert.equal(findings.length, 15);
+  assert.equal(findings.length, 13);
 
   const secretFinding = findings.find(
     (finding) => finding.ruleId === "exposed-secrets"
@@ -137,6 +137,14 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, broken auth
         "Verify the provider signature before processing the payload or triggering side effects. Use provider-specific verification such as stripe.webhooks.constructEvent or Webhook.verify."
     }
   );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.ruleId === "broken-authorization" &&
+        finding.file === "app/api/webhooks/stripe/route.ts"
+    ),
+    false
+  );
 
   assert.deepEqual(
     findings.find(
@@ -158,6 +166,14 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, broken auth
       patch:
         "Verify the provider signature before processing the payload or triggering side effects. Use provider-specific verification such as stripe.webhooks.constructEvent or Webhook.verify."
     }
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.ruleId === "broken-authorization" &&
+        finding.file === "app/api/webhook/orders/route.ts"
+    ),
+    false
   );
 });
 
