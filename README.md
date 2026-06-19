@@ -2,13 +2,14 @@
 
 Deterministic pre-deploy security scanner for AI-generated web apps.
 
-TrustBoundary focuses on high-signal evidence. Current release slice detects exposed Supabase service role keys in client-side Next.js code, unsafe request-body mutation flows, broken authorization in sensitive Next.js API routes and server actions, and webhook routes that perform sensitive actions without visible signature verification, returns JSON, writes escaped HTML reports, and gates CI through a GitHub Action.
+TrustBoundary focuses on high-signal evidence. Current release slice detects exposed Supabase service role keys in client-side Next.js code, unsafe request-body mutation flows, broken authorization in sensitive Next.js API routes and server actions, broad public Supabase/Firebase policy failures, and webhook routes that perform sensitive actions without visible signature verification, returns JSON, writes escaped HTML reports, and gates CI through a GitHub Action.
 
 ## Current Slice
 
 - Rule 1: exposed Supabase service role key in client-side Next.js code
 - Rule 2: unsafe request body mutation flow into database writes
 - Rule 3: broken authorization on sensitive Next.js API routes and server actions
+- Rule 4 slice: Supabase/Firebase RLS failure detection from committed SQL/rule text
 - Rule 5 slice: webhook signature verification on inbound webhook routes
 - Blocking severity today: Confirmed Critical only
 - Interfaces:
@@ -146,7 +147,7 @@ TrustBoundary V1 aims at 5 deadly AI-generated security patterns:
 4. Supabase/Firebase rule failures
 5. Webhook and AI-agent abuse
 
-Current shipped implementation covers first slice of item 1, first slice of item 2, first slice of item 3, and first slice of item 5.
+Current shipped implementation covers first slice of item 1, first slice of item 2, first slice of item 3, first slice of item 4, and first slice of item 5.
 
 ## Philosophy
 

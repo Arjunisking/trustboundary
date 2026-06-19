@@ -25,14 +25,19 @@ test("@trustboundary/core walks fixture files as untrusted text", async () => {
     "app/api/users/route.ts",
     "app/api/webhook/orders/route.ts",
     "app/api/webhooks/stripe/route.ts",
-    "lib/server/supabase-admin.ts"
+    "firestore.rules",
+    "lib/server/supabase-admin.ts",
+    "storage.rules",
+    "supabase/migrations/202606190001_public_profiles.sql",
+    "supabase/migrations/202606190002_public_orders_insert.sql",
+    "supabase/policies/profile_owner_only.sql"
   ]);
 });
 
-test("@trustboundary/core detects exposed secrets, unsafe mutations, broken authorization, and webhook abuse", async () => {
+test("@trustboundary/core detects exposed secrets, unsafe mutations, broken authorization, webhook abuse, and RLS failures", async () => {
   const findings = await scanRepository(fixtureRoot);
 
-  assert.equal(findings.length, 13);
+  assert.equal(findings.length, 16);
 
   const secretFinding = findings.find(
     (finding) => finding.ruleId === "exposed-secrets"
@@ -175,6 +180,68 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, broken auth
     ),
     false
   );
+
+  assert.deepEqual(
+    findings.find(
+      (finding) =>
+        finding.ruleId === "rls-failures" &&
+        finding.file === "supabase/migrations/202606190001_public_profiles.sql"
+    ),
+    {
+      id: "rls-failures:supabase/migrations/202606190001_public_profiles.sql:4",
+      ruleId: "rls-failures",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "supabase/migrations/202606190001_public_profiles.sql",
+      line: 4,
+      message: "Supabase policy uses USING (true), allowing broad public access.",
+      exploitPath:
+        "An attacker can read or write data directly because the committed Supabase or Firebase rule text visibly grants broad public access.",
+      patch:
+        "Restrict public access with auth.uid(), request.auth, tenant ownership checks, or provider-specific role conditions before allowing reads or writes."
+    }
+  );
+
+  assert.deepEqual(
+    findings.find(
+      (finding) =>
+        finding.ruleId === "rls-failures" &&
+        finding.file === "supabase/migrations/202606190002_public_orders_insert.sql"
+    ),
+    {
+      id: "rls-failures:supabase/migrations/202606190002_public_orders_insert.sql:4",
+      ruleId: "rls-failures",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "supabase/migrations/202606190002_public_orders_insert.sql",
+      line: 4,
+      message: "Supabase policy uses WITH CHECK (true), allowing broad public writes.",
+      exploitPath:
+        "An attacker can read or write data directly because the committed Supabase or Firebase rule text visibly grants broad public access.",
+      patch:
+        "Restrict public access with auth.uid(), request.auth, tenant ownership checks, or provider-specific role conditions before allowing reads or writes."
+    }
+  );
+
+  assert.deepEqual(
+    findings.find(
+      (finding) =>
+        finding.ruleId === "rls-failures" && finding.file === "firestore.rules"
+    ),
+    {
+      id: "rls-failures:firestore.rules:5",
+      ruleId: "rls-failures",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "firestore.rules",
+      line: 5,
+      message: "Firebase rules allow public read and write access.",
+      exploitPath:
+        "An attacker can read or write data directly because the committed Supabase or Firebase rule text visibly grants broad public access.",
+      patch:
+        "Restrict public access with auth.uid(), request.auth, tenant ownership checks, or provider-specific role conditions before allowing reads or writes."
+    }
+  );
 });
 
 test("@trustboundary/core does not flag safe server-only or validated mutation usage", async () => {
@@ -202,6 +269,14 @@ test("@trustboundary/core does not flag safe server-only or validated mutation u
   );
   assert.equal(
     findings.some((finding) => finding.file === "app/api/health/route.ts"),
+    false
+  );
+  assert.equal(
+    findings.some((finding) => finding.file === "supabase/policies/profile_owner_only.sql"),
+    false
+  );
+  assert.equal(
+    findings.some((finding) => finding.file === "storage.rules"),
     false
   );
 });

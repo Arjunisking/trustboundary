@@ -5,6 +5,7 @@ import {
   RULE_IDS,
   matchBrokenAuthorization,
   matchExposedSupabaseServiceRoleKey,
+  matchRlsFailures,
   matchWebhookSignatureVerification,
   matchUnsafeMutation
 } from "../dist/index.js";
@@ -353,6 +354,94 @@ test("does not flag non-webhook API route for signature verification", () => {
       "  const body = await request.json();",
       "  await prisma.user.create({ data: body });",
       "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("detects Supabase policy with USING (true)", () => {
+  const matches = matchRlsFailures({
+    relativePath: "supabase/migrations/202606190001_public_profiles.sql",
+    content: [
+      'create policy "Public profiles read"',
+      "on public.profiles",
+      "for select",
+      "using (true);"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 4);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("detects Supabase write policy with WITH CHECK (true)", () => {
+  const matches = matchRlsFailures({
+    relativePath: "supabase/migrations/202606190002_public_orders_insert.sql",
+    content: [
+      'create policy "Public orders insert"',
+      "on public.orders",
+      "for insert",
+      "with check (true);"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 4);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("detects Firebase public read and write rule", () => {
+  const matches = matchRlsFailures({
+    relativePath: "firestore.rules",
+    content: [
+      "rules_version = '2';",
+      "service cloud.firestore {",
+      "  match /databases/{database}/documents {",
+      "    match /users/{userId} {",
+      "      allow read, write: if true;",
+      "    }",
+      "  }",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 5);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("does not flag Supabase policy scoped to auth.uid() = user_id", () => {
+  const matches = matchRlsFailures({
+    relativePath: "supabase/policies/profile_owner_only.sql",
+    content: [
+      'create policy "Profile owner update"',
+      "on public.profiles",
+      "for update",
+      "using (auth.uid() = user_id)",
+      "with check (auth.uid() = user_id);"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag Firebase rules requiring request.auth != null", () => {
+  const matches = matchRlsFailures({
+    relativePath: "storage.rules",
+    content: [
+      "rules_version = '2';",
+      "service firebase.storage {",
+      "  match /b/{bucket}/o {",
+      "    match /uploads/{allPaths=**} {",
+      "      allow write: if request.auth != null;",
+      "    }",
+      "  }",
       "}"
     ].join("\n")
   });

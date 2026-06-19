@@ -40,7 +40,9 @@ export interface ScanFile {
 export const NO_FINDINGS: Finding[] = [];
 export const NO_CONFIRMED_CRITICAL_MESSAGE = "No Confirmed Critical issues found.";
 
-const TEXT_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
+const SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/;
+const SQL_FILE_PATTERN = /\.sql$/;
+const FIREBASE_RULE_FILE_PATTERN = /(^|\/)(firestore|firebase|storage)\.rules$/;
 const SKIPPED_DIRECTORIES = new Set([
   ".git",
   ".next",
@@ -53,7 +55,7 @@ export async function walkFiles(rootPath: string): Promise<ScanFile[]> {
   const normalizedRoot = path.resolve(rootPath);
   const entries = await walkDirectory(normalizedRoot, normalizedRoot);
 
-  return entries.filter((entry) => TEXT_FILE_PATTERN.test(entry.relativePath));
+  return entries.filter((entry) => isScannableFilePath(entry.relativePath));
 }
 
 async function walkDirectory(
@@ -88,6 +90,14 @@ async function walkDirectory(
   }
 
   return collected;
+}
+
+function isScannableFilePath(relativePath: string): boolean {
+  return (
+    SOURCE_FILE_PATTERN.test(relativePath) ||
+    SQL_FILE_PATTERN.test(relativePath) ||
+    FIREBASE_RULE_FILE_PATTERN.test(relativePath)
+  );
 }
 
 function createFindingId(ruleId: string, relativePath: string, line: number): string {

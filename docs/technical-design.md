@@ -37,7 +37,7 @@ Finding fields:
 ## V1 engine strategy
 Use deterministic parsing first:
 - file walking
-- regex and string rules for secrets
+- regex and string rules for secrets and committed RLS/rule files
 - TypeScript AST later for unsafe mutations and authorization flow
 
 ## Report strategy

@@ -68,6 +68,15 @@ const BROKEN_AUTHORIZATION_OWNERSHIP_EXPLOIT_PATH =
   "An authenticated attacker can read or mutate another user's records when the handler lacks an ownership or tenant constraint.";
 const BROKEN_AUTHORIZATION_OWNERSHIP_PATCH =
   "Scope the query or mutation with userId, ownerId, tenantId, orgId, organizationId, or createdBy, or require an explicit admin guard.";
+const RLS_FAILURES_RULE_ID = "rls-failures";
+const RLS_FAILURES_CONFIRMED_EXPLOIT_PATH =
+  "An attacker can read or write data directly because the committed Supabase or Firebase rule text visibly grants broad public access.";
+const RLS_FAILURES_CONFIRMED_PATCH =
+  "Restrict public access with auth.uid(), request.auth, tenant ownership checks, or provider-specific role conditions before allowing reads or writes.";
+const RLS_FAILURES_LIKELY_EXPLOIT_PATH =
+  "The committed rule appears to allow broad writes on a user-scoped table, but the scanner cannot prove the table intent or ownership model from local text alone.";
+const RLS_FAILURES_LIKELY_PATCH =
+  "Add explicit auth.uid(), request.auth.uid, user_id, owner_id, tenant_id, org_id, or created_by checks in the policy condition.";
 const WEBHOOK_AND_AGENT_ABUSE_RULE_ID = "webhook-and-agent-abuse";
 const WEBHOOK_SIGNATURE_CONFIRMED_EXPLOIT_PATH =
   "An attacker can forge webhook requests and trigger sensitive side effects when the route processes webhook payloads without verifying the provider signature.";
@@ -102,6 +111,18 @@ const API_ROUTE_PATH_PATTERNS = [
 const WEBHOOK_ROUTE_PATH_PATTERNS = [
   /^(?:src\/)?app\/api(?:\/.+)?\/route\.tsx?$/,
   /^(?:src\/)?pages\/api\/.+\.tsx?$/
+] as const;
+const SUPABASE_RLS_PATH_PATTERNS = [
+  /^supabase\/migrations\/.+\.sql$/,
+  /^database\/.+\.sql$/,
+  /^db\/.+\.sql$/,
+  /^supabase\/.+\.sql$/,
+  /^policies\/.+\.sql$/
+] as const;
+const FIREBASE_RULE_PATH_PATTERNS = [
+  /(^|\/)firestore\.rules$/,
+  /(^|\/)firebase\.rules$/,
+  /(^|\/)storage\.rules$/
 ] as const;
 
 const HTTP_HANDLER_NAMES = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -264,6 +285,27 @@ const WEBHOOK_MUTATION_OBJECT_KEYWORDS = [
   "user",
   "account"
 ] as const;
+const USER_SCOPED_TABLE_KEYWORDS = [
+  "user",
+  "users",
+  "profile",
+  "profiles",
+  "account",
+  "accounts",
+  "member",
+  "members",
+  "customer",
+  "customers"
+] as const;
+const OWNERSHIP_SQL_MARKERS = [
+  "auth.uid()",
+  "user_id",
+  "owner_id",
+  "created_by",
+  "tenant_id",
+  "org_id",
+  "organization_id"
+] as const;
 
 const SERVICE_ROLE_ENV_REF = /\bprocess\.env\.SUPABASE_SERVICE_ROLE_KEY\b/;
 const NEXT_PUBLIC_SERVICE_ROLE_MISUSE =
@@ -400,6 +442,14 @@ function isWebhookTargetPath(relativePath: string): boolean {
 
 function isPagesApiPath(relativePath: string): boolean {
   return /^(?:src\/)?pages\/api\/.+\.tsx?$/.test(relativePath);
+}
+
+function isSupabaseRlsTargetPath(relativePath: string): boolean {
+  return SUPABASE_RLS_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isFirebaseRuleTargetPath(relativePath: string): boolean {
+  return FIREBASE_RULE_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
 }
 
 function isDirectiveStatement(
@@ -1150,6 +1200,195 @@ function createBrokenAuthorizationOwnershipMatch(line: number): RuleMatch {
   };
 }
 
+function createRlsConfirmedMatch(line: number, message: string): RuleMatch {
+  return {
+    line,
+    message,
+    exploitPath: RLS_FAILURES_CONFIRMED_EXPLOIT_PATH,
+    patch: RLS_FAILURES_CONFIRMED_PATCH,
+    severity: "critical",
+    confidence: "confirmed"
+  };
+}
+
+function createRlsLikelyMatch(line: number, message: string): RuleMatch {
+  return {
+    line,
+    message,
+    exploitPath: RLS_FAILURES_LIKELY_EXPLOIT_PATH,
+    patch: RLS_FAILURES_LIKELY_PATCH,
+    severity: "high",
+    confidence: "likely"
+  };
+}
+
+function collectSupabasePolicyStatements(
+  content: string
+): Array<{ statement: string; startIndex: number }> {
+  const statements: Array<{ statement: string; startIndex: number }> = [];
+
+  for (const match of content.matchAll(/create\s+policy[\s\S]*?(?:;|$)/gi)) {
+    statements.push({
+      statement: match[0],
+      startIndex: match.index ?? 0
+    });
+  }
+
+  return statements;
+}
+
+function getSupabasePolicyTargetTable(statement: string): string | null {
+  const tableMatch = statement.match(/\bon\s+(?:public\.)?"?([A-Za-z0-9_-]+)"?/i);
+  return tableMatch?.[1]?.toLowerCase() ?? null;
+}
+
+function isLikelyUserScopedTable(tableName: string | null): boolean {
+  return (
+    tableName !== null &&
+    USER_SCOPED_TABLE_KEYWORDS.some((keyword) => tableName.includes(keyword))
+  );
+}
+
+function hasOwnershipSqlMarker(statement: string): boolean {
+  const normalized = statement.toLowerCase();
+  return OWNERSHIP_SQL_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function isSupabaseWritePolicy(statement: string): boolean {
+  return /\bfor\s+(?:all|insert|update|delete)\b/i.test(statement);
+}
+
+function addUniqueRuleMatch(
+  findings: RuleMatch[],
+  seenKeys: Set<string>,
+  finding: RuleMatch
+): void {
+  const key = `${finding.line}:${finding.message}`;
+  if (seenKeys.has(key)) {
+    return;
+  }
+
+  seenKeys.add(key);
+  findings.push(finding);
+}
+
+function collectSupabaseRlsFindings(file: RuleFile): RuleMatch[] {
+  const findings: RuleMatch[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const { statement, startIndex } of collectSupabasePolicyStatements(file.content)) {
+    const tableName = getSupabasePolicyTargetTable(statement);
+    const writePolicy = isSupabaseWritePolicy(statement);
+
+    for (const match of statement.matchAll(/\busing\s*\(\s*true\s*\)/gi)) {
+      addUniqueRuleMatch(
+        findings,
+        seenKeys,
+        createRlsConfirmedMatch(
+          lineNumberFromIndex(file.content, startIndex + (match.index ?? 0)),
+          "Supabase policy uses USING (true), allowing broad public access."
+        )
+      );
+    }
+
+    for (const match of statement.matchAll(/\bwith\s+check\s*\(\s*true\s*\)/gi)) {
+      addUniqueRuleMatch(
+        findings,
+        seenKeys,
+        createRlsConfirmedMatch(
+          lineNumberFromIndex(file.content, startIndex + (match.index ?? 0)),
+          "Supabase policy uses WITH CHECK (true), allowing broad public writes."
+        )
+      );
+    }
+
+    const anonWriteMatch = statement.match(/auth\.role\(\)\s*=\s*'anon'/i);
+    if (writePolicy && anonWriteMatch) {
+      addUniqueRuleMatch(
+        findings,
+        seenKeys,
+        createRlsConfirmedMatch(
+          lineNumberFromIndex(file.content, startIndex + (anonWriteMatch.index ?? 0)),
+          "Supabase write policy grants anon role access."
+        )
+      );
+    }
+
+    if (
+      writePolicy &&
+      isLikelyUserScopedTable(tableName) &&
+      !hasOwnershipSqlMarker(statement) &&
+      !/\busing\s*\(\s*true\s*\)/i.test(statement) &&
+      !/\bwith\s+check\s*\(\s*true\s*\)/i.test(statement) &&
+      !/auth\.role\(\)\s*=\s*'anon'/i.test(statement)
+    ) {
+      addUniqueRuleMatch(
+        findings,
+        seenKeys,
+        createRlsLikelyMatch(
+          lineNumberFromIndex(file.content, startIndex),
+          "Supabase write policy on a likely user-scoped table lacks a visible auth.uid() or ownership condition."
+        )
+      );
+    }
+  }
+
+  for (
+    const match of file.content.matchAll(
+      /\bgrant\s+(?:all|insert|update|delete|truncate|references|trigger)(?:\s*,\s*(?:all|insert|update|delete|truncate|references|trigger))*\s+on\s+(?:table\s+)?[^\n;]+\s+to\s+(?:anon|public)\b/gi
+    )
+  ) {
+    addUniqueRuleMatch(
+      findings,
+      seenKeys,
+      createRlsConfirmedMatch(
+        lineNumberFromIndex(file.content, match.index ?? 0),
+        "Supabase SQL grants broad public write privileges."
+      )
+    );
+  }
+
+  return findings;
+}
+
+function collectFirebaseRlsFindings(file: RuleFile): RuleMatch[] {
+  const findings: RuleMatch[] = [];
+  const seenKeys = new Set<string>();
+  const patterns = [
+    {
+      regex: /allow\s+read\s*,\s*write\s*:\s*if\s+true\s*;/gi,
+      message: "Firebase rules allow public read and write access."
+    },
+    {
+      regex: /allow\s+write\s*:\s*if\s+true\s*;/gi,
+      message: "Firebase rules allow public write access."
+    },
+    {
+      regex: /allow\s+read\s*,\s*write\s*:\s*if\s+request\.auth\s*==\s*null\s*;/gi,
+      message: "Firebase rules allow unauthenticated read and write access."
+    },
+    {
+      regex: /allow\s+write\s*:\s*if\s+request\.auth\s*==\s*null\s*;/gi,
+      message: "Firebase rules allow unauthenticated writes."
+    }
+  ] as const;
+
+  for (const { regex, message } of patterns) {
+    for (const match of file.content.matchAll(regex)) {
+      addUniqueRuleMatch(
+        findings,
+        seenKeys,
+        createRlsConfirmedMatch(
+          lineNumberFromIndex(file.content, match.index ?? 0),
+          message
+        )
+      );
+    }
+  }
+
+  return findings;
+}
+
 function analyzeHandlerAuthorization(handler: HandlerCandidate): RuleMatch[] {
   const sinks = collectSensitiveSinks(handler.body);
   if (sinks.length === 0) {
@@ -1296,6 +1535,20 @@ export function matchBrokenAuthorization(file: RuleFile): RuleMatch[] {
   return findings;
 }
 
+export function matchRlsFailures(file: RuleFile): RuleMatch[] {
+  const relativePath = normalizePath(file.relativePath);
+
+  if (isSupabaseRlsTargetPath(relativePath)) {
+    return collectSupabaseRlsFindings(file);
+  }
+
+  if (isFirebaseRuleTargetPath(relativePath)) {
+    return collectFirebaseRlsFindings(file);
+  }
+
+  return [];
+}
+
 export function matchWebhookSignatureVerification(file: RuleFile): RuleMatch[] {
   const sourceFile = createSourceFile(file);
   const relativePath = normalizePath(file.relativePath);
@@ -1344,6 +1597,13 @@ export const BROKEN_AUTHORIZATION_RULE: ScannerRuleDefinition = {
   matchFile: matchBrokenAuthorization
 };
 
+export const RLS_FAILURES_RULE: ScannerRuleDefinition = {
+  ruleId: RLS_FAILURES_RULE_ID,
+  severity: "critical",
+  confidence: "confirmed",
+  matchFile: matchRlsFailures
+};
+
 export const WEBHOOK_AND_AGENT_ABUSE_RULE: ScannerRuleDefinition = {
   ruleId: WEBHOOK_AND_AGENT_ABUSE_RULE_ID,
   severity: "critical",
@@ -1355,5 +1615,6 @@ export const SCANNER_RULES: ScannerRuleDefinition[] = [
   EXPOSED_SUPABASE_SERVICE_ROLE_RULE,
   UNSAFE_MUTATION_RULE,
   BROKEN_AUTHORIZATION_RULE,
+  RLS_FAILURES_RULE,
   WEBHOOK_AND_AGENT_ABUSE_RULE
 ];
