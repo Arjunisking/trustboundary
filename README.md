@@ -136,7 +136,7 @@ jobs:
 
       - name: Run TrustBoundary
         id: trustboundary
-        uses: OWNER/trustboundary@v1
+        uses: Arjunisking/trustboundary@v1
         with:
           target_path: .
           enforce: "true"
@@ -172,6 +172,23 @@ Action outputs:
 - `blocked`
 - `report_path`
 
+## Release Tagging
+
+Release tags for public action use:
+
+- Create immutable release tag `v1.0.0`
+- Create or update major tag `v1` to point at same commit as `v1.0.0`
+- Test from a clean external repository with `uses: Arjunisking/trustboundary@v1`
+
+Example commands:
+
+```bash
+git tag -a v1.0.0 -m "TrustBoundary v1.0.0"
+git tag -fa v1 -m "TrustBoundary v1"
+git push origin v1.0.0
+git push origin refs/tags/v1 --force
+```
+
 ## Example Fixture
 
 `examples/insecure-next-supabase` is intentionally unsafe. It includes API routes, webhook handlers, Supabase SQL policies, and Firebase rules that exercise all 5 V1 rules. See [examples/insecure-next-supabase/README.md](examples/insecure-next-supabase/README.md).
@@ -205,3 +222,4 @@ pnpm build
 ## License
 
 MIT
+
