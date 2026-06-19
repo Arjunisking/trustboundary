@@ -68,6 +68,15 @@ const BROKEN_AUTHORIZATION_OWNERSHIP_EXPLOIT_PATH =
   "An authenticated attacker can read or mutate another user's records when the handler lacks an ownership or tenant constraint.";
 const BROKEN_AUTHORIZATION_OWNERSHIP_PATCH =
   "Scope the query or mutation with userId, ownerId, tenantId, orgId, organizationId, or createdBy, or require an explicit admin guard.";
+const WEBHOOK_AND_AGENT_ABUSE_RULE_ID = "webhook-and-agent-abuse";
+const WEBHOOK_SIGNATURE_CONFIRMED_EXPLOIT_PATH =
+  "An attacker can forge webhook requests and trigger sensitive side effects when the route processes webhook payloads without verifying the provider signature.";
+const WEBHOOK_SIGNATURE_CONFIRMED_PATCH =
+  "Verify the provider signature before processing the payload or triggering side effects. Use provider-specific verification such as stripe.webhooks.constructEvent or Webhook.verify.";
+const WEBHOOK_SIGNATURE_LIKELY_EXPLOIT_PATH =
+  "The route appears to process webhook traffic and sensitive side effects, but visible code only reads signature material or an untraceable helper without proving the signature is verified.";
+const WEBHOOK_SIGNATURE_LIKELY_PATCH =
+  "Keep signature header reads, but add a visible verification step such as stripe.webhooks.constructEvent, Webhook.verify, verifySignature, or timingSafeEqual before the sensitive sink.";
 
 const FRONTEND_PATH_PATTERNS = [
   /^app\//,
@@ -89,6 +98,10 @@ const SERVER_ONLY_PATH_PATTERNS = [
 
 const API_ROUTE_PATH_PATTERNS = [
   /^(?:src\/)?app\/api(?:\/.+)?\/route\.tsx?$/
+] as const;
+const WEBHOOK_ROUTE_PATH_PATTERNS = [
+  /^(?:src\/)?app\/api(?:\/.+)?\/route\.tsx?$/,
+  /^(?:src\/)?pages\/api\/.+\.tsx?$/
 ] as const;
 
 const HTTP_HANDLER_NAMES = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -144,6 +157,113 @@ const SUPABASE_SINK_METHOD_NAMES = new Set([
   "upsert",
   "delete"
 ]);
+const WEBHOOK_DB_WRITE_METHOD_NAMES = new Set([
+  "create",
+  "createMany",
+  "update",
+  "updateMany",
+  "upsert",
+  "delete",
+  "deleteMany",
+  "insert"
+]);
+const WEBHOOK_EXTERNAL_BASE_IDENTIFIERS = new Set([
+  "fetch",
+  "openai",
+  "resend",
+  "stripe",
+  "clerkClient"
+]);
+const WEBHOOK_ROUTE_KEYWORDS = [
+  "webhook",
+  "webhooks",
+  "stripe",
+  "clerk",
+  "github",
+  "supabase",
+  "resend",
+  "n8n",
+  "inngest",
+  "cron"
+] as const;
+const WEBHOOK_CODE_SIGNAL_KEYWORDS = [
+  "webhook",
+  "webhooks",
+  "svix",
+  "constructevent",
+  "verifysignature",
+  "verifywebhook",
+  "validatesignature",
+  "isvalidsignature",
+  "stripe-signature",
+  "svix-signature",
+  "x-hub-signature-256",
+  "x-signature",
+  "x-webhook-signature"
+] as const;
+const WEBHOOK_SIGNATURE_HEADER_NAMES = new Set([
+  "stripe-signature",
+  "svix-signature",
+  "x-hub-signature-256",
+  "x-signature",
+  "x-webhook-signature"
+]);
+const WEBHOOK_BODY_READ_TERMINAL_NAMES = new Set([
+  "json",
+  "text",
+  "arrayBuffer",
+  "formData"
+]);
+const WEBHOOK_RAW_BODY_HELPER_TERMINAL_NAMES = new Set([
+  "buffer",
+  "getRawBody",
+  "raw"
+]);
+const WEBHOOK_STRONG_CONTROL_TERMINAL_NAMES = new Set([
+  "constructevent",
+  "verifysignature",
+  "verifywebhook",
+  "validatesignature",
+  "isvalidsignature",
+  "createhmac",
+  "timingsafeequal"
+]);
+const WEBHOOK_POSSIBLE_CONTROL_VERBS = [
+  "verify",
+  "validate",
+  "check",
+  "assert",
+  "parse",
+  "construct"
+] as const;
+const WEBHOOK_POSSIBLE_CONTROL_NOUNS = [
+  ...WEBHOOK_CODE_SIGNAL_KEYWORDS,
+  "signature"
+] as const;
+const WEBHOOK_WORKFLOW_TRIGGER_VERBS = [
+  "trigger",
+  "run",
+  "execute",
+  "invoke",
+  "dispatch"
+] as const;
+const WEBHOOK_WORKFLOW_NOUNS = ["workflow", "agent", "tool"] as const;
+const WEBHOOK_MUTATION_ACTION_KEYWORDS = [
+  "create",
+  "update",
+  "delete",
+  "disable",
+  "ban",
+  "charge",
+  "refund",
+  "cancel"
+] as const;
+const WEBHOOK_MUTATION_OBJECT_KEYWORDS = [
+  "payment",
+  "order",
+  "user",
+  "account"
+] as const;
 
 const SERVICE_ROLE_ENV_REF = /\bprocess\.env\.SUPABASE_SERVICE_ROLE_KEY\b/;
 const NEXT_PUBLIC_SERVICE_ROLE_MISUSE =
@@ -274,6 +394,14 @@ function isBrokenAuthorizationTargetPath(relativePath: string): boolean {
   return API_ROUTE_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
 }
 
+function isWebhookTargetPath(relativePath: string): boolean {
+  return WEBHOOK_ROUTE_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isPagesApiPath(relativePath: string): boolean {
+  return /^(?:src\/)?pages\/api\/.+\.tsx?$/.test(relativePath);
+}
+
 function isDirectiveStatement(
   statement: ts.Statement | ts.Expression
 ): statement is ts.ExpressionStatement {
@@ -298,6 +426,14 @@ function hasFunctionLevelUseServerDirective(body: ts.ConciseBody): boolean {
 
 function hasExportModifier(node: ts.Node): boolean {
   return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
+}
+
+function hasDefaultExportModifier(node: ts.Node): boolean {
+  return (
+    (ts.getCombinedModifierFlags(node as ts.Declaration) &
+      ts.ModifierFlags.Default) !==
+    0
+  );
 }
 
 function isAsyncFunctionLike(node: ts.FunctionLikeDeclarationBase): boolean {
@@ -389,6 +525,46 @@ function getExportedServerActions(sourceFile: ts.SourceFile): HandlerCandidate[]
           body: initializer.body
         });
       }
+    }
+  }
+
+  return handlers;
+}
+
+function getExportedWebhookRouteHandlers(
+  sourceFile: ts.SourceFile,
+  relativePath: string
+): HandlerCandidate[] {
+  const handlers = getExportedApiHandlers(sourceFile);
+
+  if (!isPagesApiPath(relativePath)) {
+    return handlers;
+  }
+
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      hasExportModifier(statement) &&
+      hasDefaultExportModifier(statement) &&
+      statement.body
+    ) {
+      handlers.push({
+        name: statement.name?.text ?? "default",
+        body: statement.body
+      });
+      continue;
+    }
+
+    if (!ts.isExportAssignment(statement)) {
+      continue;
+    }
+
+    const expression = statement.expression;
+    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+      handlers.push({
+        name: "default",
+        body: expression.body
+      });
     }
   }
 
@@ -612,6 +788,339 @@ function collectOwnershipMarkers(body: ts.ConciseBody): number[] {
   return markers.sort((left, right) => left - right);
 }
 
+function containsLowercaseKeyword(
+  value: string,
+  keywords: readonly string[]
+): boolean {
+  return keywords.some((keyword) => value.includes(keyword));
+}
+
+function isRequestLikeIdentifier(name: string | null): boolean {
+  return name === "request" || name === "req";
+}
+
+function isWebhookRouteSignal(file: RuleFile): boolean {
+  const normalizedPath = normalizePath(file.relativePath).toLowerCase();
+  const normalizedContent = file.content.toLowerCase();
+
+  return (
+    containsLowercaseKeyword(normalizedPath, WEBHOOK_ROUTE_KEYWORDS) ||
+    containsLowercaseKeyword(normalizedContent, WEBHOOK_CODE_SIGNAL_KEYWORDS)
+  );
+}
+
+function collectWebhookBodyReadMarkers(body: ts.ConciseBody): number[] {
+  const markers: number[] = [];
+
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const terminalName = getCallTerminalName(node);
+      const baseIdentifier = getCallBaseIdentifier(node);
+      const firstArgument = node.arguments[0];
+
+      if (
+        terminalName &&
+        WEBHOOK_BODY_READ_TERMINAL_NAMES.has(terminalName) &&
+        isRequestLikeIdentifier(baseIdentifier)
+      ) {
+        markers.push(node.getStart());
+      } else if (
+        terminalName &&
+        WEBHOOK_RAW_BODY_HELPER_TERMINAL_NAMES.has(terminalName) &&
+        firstArgument &&
+        ts.isIdentifier(firstArgument) &&
+        isRequestLikeIdentifier(firstArgument.text)
+      ) {
+        markers.push(node.getStart());
+      }
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+      const chain = getIdentifierChain(node);
+      if (
+        chain.at(-1) === "body" &&
+        isRequestLikeIdentifier(chain[0] ?? null)
+      ) {
+        markers.push(node.getStart());
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(body);
+
+  return markers.sort((left, right) => left - right);
+}
+
+function isWebhookStrongVerificationCall(node: ts.CallExpression): boolean {
+  const chain = getIdentifierChain(node.expression);
+  const lowerChain = chain.map((name) => name.toLowerCase());
+  const terminalName = lowerChain.at(-1);
+
+  if (!terminalName) {
+    return false;
+  }
+
+  if (WEBHOOK_STRONG_CONTROL_TERMINAL_NAMES.has(terminalName)) {
+    return true;
+  }
+
+  if (
+    lowerChain.join(".").includes("stripe.webhooks.constructevent") ||
+    lowerChain.join(".").includes("crypto.createhmac")
+  ) {
+    return true;
+  }
+
+  return terminalName === "verify" && lowerChain.at(-2) === "webhook";
+}
+
+function isPossibleWebhookVerificationCall(node: ts.CallExpression): boolean {
+  if (isWebhookStrongVerificationCall(node)) {
+    return false;
+  }
+
+  const lowerChain = getIdentifierChain(node.expression).join(".").toLowerCase();
+  if (!lowerChain) {
+    return false;
+  }
+
+  return (
+    containsLowercaseKeyword(lowerChain, WEBHOOK_POSSIBLE_CONTROL_VERBS) &&
+    containsLowercaseKeyword(lowerChain, WEBHOOK_POSSIBLE_CONTROL_NOUNS)
+  );
+}
+
+function getWebhookSignatureHeaderReadPosition(
+  node: ts.CallExpression
+): number | null {
+  const terminalName = getCallTerminalName(node);
+  if (terminalName !== "get") {
+    return null;
+  }
+
+  const [headerArgument] = node.arguments;
+  if (
+    !headerArgument ||
+    (!ts.isStringLiteral(headerArgument) &&
+      !ts.isNoSubstitutionTemplateLiteral(headerArgument))
+  ) {
+    return null;
+  }
+
+  const headerName = headerArgument.text.toLowerCase();
+  if (!WEBHOOK_SIGNATURE_HEADER_NAMES.has(headerName)) {
+    return null;
+  }
+
+  const chain = getIdentifierChain(node.expression);
+  if (
+    chain.includes("headers") ||
+    isRequestLikeIdentifier(chain[0] ?? null)
+  ) {
+    return node.getStart();
+  }
+
+  return null;
+}
+
+function collectWebhookSignatureSignals(body: ts.ConciseBody): {
+  strongControls: number[];
+  headerReads: number[];
+  possibleControls: number[];
+} {
+  const strongControls: number[] = [];
+  const headerReads: number[] = [];
+  const possibleControls: number[] = [];
+
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const headerReadPosition = getWebhookSignatureHeaderReadPosition(node);
+      if (headerReadPosition !== null) {
+        headerReads.push(headerReadPosition);
+      }
+
+      if (isWebhookStrongVerificationCall(node)) {
+        strongControls.push(node.getStart());
+      } else if (isPossibleWebhookVerificationCall(node)) {
+        possibleControls.push(node.getStart());
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(body);
+
+  return {
+    strongControls: strongControls.sort((left, right) => left - right),
+    headerReads: headerReads.sort((left, right) => left - right),
+    possibleControls: possibleControls.sort((left, right) => left - right)
+  };
+}
+
+function isWebhookMutationKeywordSink(node: ts.CallExpression): boolean {
+  const lowerChain = getIdentifierChain(node.expression).join(".").toLowerCase();
+  if (!lowerChain) {
+    return false;
+  }
+
+  return (
+    containsLowercaseKeyword(lowerChain, WEBHOOK_MUTATION_ACTION_KEYWORDS) &&
+    containsLowercaseKeyword(lowerChain, WEBHOOK_MUTATION_OBJECT_KEYWORDS)
+  );
+}
+
+function isWebhookWorkflowSink(node: ts.CallExpression): boolean {
+  const lowerChain = getIdentifierChain(node.expression).join(".").toLowerCase();
+  if (!lowerChain) {
+    return false;
+  }
+
+  return (
+    containsLowercaseKeyword(lowerChain, WEBHOOK_WORKFLOW_TRIGGER_VERBS) &&
+    containsLowercaseKeyword(lowerChain, WEBHOOK_WORKFLOW_NOUNS)
+  );
+}
+
+function getWebhookSensitiveSinkNode(node: ts.Node): SensitiveSink | null {
+  if (!ts.isCallExpression(node)) {
+    return null;
+  }
+
+  const line =
+    node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1;
+  const end = getContainingStatementEnd(node);
+  const baseIdentifier = getCallBaseIdentifier(node);
+  const terminalName = getCallTerminalName(node);
+
+  if (
+    isSupabaseFromChain(node) &&
+    terminalName &&
+    WEBHOOK_DB_WRITE_METHOD_NAMES.has(terminalName)
+  ) {
+    return { node, line, end };
+  }
+
+  if (
+    (baseIdentifier === "prisma" || baseIdentifier === "db") &&
+    terminalName &&
+    WEBHOOK_DB_WRITE_METHOD_NAMES.has(terminalName)
+  ) {
+    return { node, line, end };
+  }
+
+  if (
+    baseIdentifier !== null &&
+    WEBHOOK_EXTERNAL_BASE_IDENTIFIERS.has(baseIdentifier) &&
+    !isWebhookStrongVerificationCall(node)
+  ) {
+    return { node, line, end };
+  }
+
+  if (isWebhookWorkflowSink(node) || isWebhookMutationKeywordSink(node)) {
+    return { node, line, end };
+  }
+
+  return null;
+}
+
+function collectWebhookSensitiveSinks(body: ts.ConciseBody): SensitiveSink[] {
+  const sinks: SensitiveSink[] = [];
+  const seenPositions = new Set<number>();
+
+  function visit(node: ts.Node): void {
+    const sink = getWebhookSensitiveSinkNode(node);
+    if (sink && !seenPositions.has(sink.node.getStart())) {
+      seenPositions.add(sink.node.getStart());
+      sinks.push(sink);
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(body);
+
+  return sinks.sort((left, right) => left.node.getStart() - right.node.getStart());
+}
+
+function createWebhookConfirmedMatch(line: number): RuleMatch {
+  return {
+    line,
+    message:
+      "Webhook route processes payload and reaches a sensitive sink without visible signature verification.",
+    exploitPath: WEBHOOK_SIGNATURE_CONFIRMED_EXPLOIT_PATH,
+    patch: WEBHOOK_SIGNATURE_CONFIRMED_PATCH,
+    severity: "critical",
+    confidence: "confirmed"
+  };
+}
+
+function createWebhookLikelyMatch(line: number): RuleMatch {
+  return {
+    line,
+    message:
+      "Webhook route appears to read signature material or helper code, but no visible signature verification is completed before the sensitive sink.",
+    exploitPath: WEBHOOK_SIGNATURE_LIKELY_EXPLOIT_PATH,
+    patch: WEBHOOK_SIGNATURE_LIKELY_PATCH,
+    severity: "high",
+    confidence: "likely"
+  };
+}
+
+function analyzeWebhookHandler(
+  handler: HandlerCandidate,
+  file: RuleFile
+): RuleMatch[] {
+  if (!isWebhookRouteSignal(file)) {
+    return [];
+  }
+
+  const sinks = collectWebhookSensitiveSinks(handler.body);
+  if (sinks.length === 0) {
+    return [];
+  }
+
+  const bodyReadMarkers = collectWebhookBodyReadMarkers(handler.body);
+  if (bodyReadMarkers.length === 0) {
+    return [];
+  }
+
+  const signatureSignals = collectWebhookSignatureSignals(handler.body);
+  const findings: RuleMatch[] = [];
+
+  for (const sink of sinks) {
+    const bodyReadBeforeSink = bodyReadMarkers.some(
+      (position) => position < sink.node.getStart()
+    );
+    if (!bodyReadBeforeSink) {
+      continue;
+    }
+
+    const strongControlBeforeSink = signatureSignals.strongControls.some(
+      (position) => position < sink.node.getStart()
+    );
+    if (strongControlBeforeSink) {
+      continue;
+    }
+
+    const weakSignalBeforeSink =
+      signatureSignals.headerReads.some((position) => position < sink.node.getStart()) ||
+      signatureSignals.possibleControls.some(
+        (position) => position < sink.node.getStart()
+      );
+
+    findings.push(
+      weakSignalBeforeSink
+        ? createWebhookLikelyMatch(sink.line)
+        : createWebhookConfirmedMatch(sink.line)
+    );
+  }
+
+  return findings;
+}
+
 function createBrokenAuthorizationNoAuthMatch(line: number): RuleMatch {
   return {
     line,
@@ -778,6 +1287,33 @@ export function matchBrokenAuthorization(file: RuleFile): RuleMatch[] {
   return findings;
 }
 
+export function matchWebhookSignatureVerification(file: RuleFile): RuleMatch[] {
+  const sourceFile = createSourceFile(file);
+  const relativePath = normalizePath(file.relativePath);
+
+  if (!isWebhookTargetPath(relativePath)) {
+    return [];
+  }
+
+  const handlers = getExportedWebhookRouteHandlers(sourceFile, relativePath);
+  const findings: RuleMatch[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const handler of handlers) {
+    for (const finding of analyzeWebhookHandler(handler, file)) {
+      const key = `${handler.name}:${finding.line}:${finding.message}`;
+      if (seenKeys.has(key)) {
+        continue;
+      }
+
+      seenKeys.add(key);
+      findings.push(finding);
+    }
+  }
+
+  return findings;
+}
+
 export const EXPOSED_SUPABASE_SERVICE_ROLE_RULE: ScannerRuleDefinition = {
   ruleId: EXPOSED_SUPABASE_SERVICE_ROLE_RULE_ID,
   severity: "critical",
@@ -799,8 +1335,16 @@ export const BROKEN_AUTHORIZATION_RULE: ScannerRuleDefinition = {
   matchFile: matchBrokenAuthorization
 };
 
+export const WEBHOOK_AND_AGENT_ABUSE_RULE: ScannerRuleDefinition = {
+  ruleId: WEBHOOK_AND_AGENT_ABUSE_RULE_ID,
+  severity: "critical",
+  confidence: "confirmed",
+  matchFile: matchWebhookSignatureVerification
+};
+
 export const SCANNER_RULES: ScannerRuleDefinition[] = [
   EXPOSED_SUPABASE_SERVICE_ROLE_RULE,
   UNSAFE_MUTATION_RULE,
-  BROKEN_AUTHORIZATION_RULE
+  BROKEN_AUTHORIZATION_RULE,
+  WEBHOOK_AND_AGENT_ABUSE_RULE
 ];

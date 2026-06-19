@@ -29,7 +29,7 @@ test("@trustboundary/cli returns stable JSON output", async () => {
   const json = JSON.parse(formatJsonResult(result));
 
   assert.equal(json.targetPath, insecureFixture);
-  assert.equal(json.summary.confirmedCriticalCount, 1);
+  assert.equal(json.summary.confirmedCriticalCount, 3);
   assert.equal(json.hasBlockingFindings, true);
   assert.equal(json.enforcementEnabled, false);
   assert.equal(json.exitCode, 0);
@@ -57,10 +57,11 @@ test("@trustboundary/cli writes escaped HTML report", async () => {
   const html = await readFile(reportPath, "utf8");
 
   assert.equal(result.reportPath, reportPath);
-  assert.match(html, /TrustBoundary findings: 11/);
+  assert.match(html, /TrustBoundary findings: 15/);
   assert.match(html, /app\/admin\/page\.tsx/);
   assert.match(html, /broken-authorization/);
   assert.match(html, /unsafe-mutation/);
+  assert.match(html, /webhook-and-agent-abuse/);
 });
 
 test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mode", async () => {

@@ -36,8 +36,8 @@ test("@trustboundary/action fails for Confirmed Critical findings", async () => 
   assert.equal(result.blocked, true);
   assert.equal(result.exitCode, 1);
   assert.equal(result.enforcementEnabled, true);
-  assert.equal(result.summary.confirmedCriticalCount, 1);
-  assert.match(formatActionSummary(result), /Confirmed Critical findings: 1/);
+  assert.equal(result.summary.confirmedCriticalCount, 3);
+  assert.match(formatActionSummary(result), /Confirmed Critical findings: 3/);
 });
 
 test("@trustboundary/action passes for clean scans", async () => {
@@ -110,8 +110,8 @@ test("@trustboundary/action writes declared outputs", async () => {
   await writeActionOutputs(createActionOutputs(result), outputFile);
   const outputContents = await readFile(outputFile, "utf8");
 
-  assert.match(outputContents, /^total_findings=11/m);
-  assert.match(outputContents, /^confirmed_critical_count=1/m);
+  assert.match(outputContents, /^total_findings=15/m);
+  assert.match(outputContents, /^confirmed_critical_count=3/m);
   assert.match(outputContents, /^blocked=true/m);
   assert.match(outputContents, /^report_path=.*report\.html/m);
 });

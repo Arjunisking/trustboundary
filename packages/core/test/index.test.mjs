@@ -23,14 +23,16 @@ test("@trustboundary/core walks fixture files as untrusted text", async () => {
     "app/api/session-safe/route.ts",
     "app/api/supabase-safe/route.ts",
     "app/api/users/route.ts",
+    "app/api/webhook/orders/route.ts",
+    "app/api/webhooks/stripe/route.ts",
     "lib/server/supabase-admin.ts"
   ]);
 });
 
-test("@trustboundary/core detects exposed secrets, unsafe mutations, and broken authorization", async () => {
+test("@trustboundary/core detects exposed secrets, unsafe mutations, broken authorization, and webhook abuse", async () => {
   const findings = await scanRepository(fixtureRoot);
 
-  assert.equal(findings.length, 11);
+  assert.equal(findings.length, 15);
 
   const secretFinding = findings.find(
     (finding) => finding.ruleId === "exposed-secrets"
@@ -111,6 +113,50 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, and broken 
         "An authenticated attacker can read or mutate another user's records when the handler lacks an ownership or tenant constraint.",
       patch:
         "Scope the query or mutation with userId, ownerId, tenantId, orgId, organizationId, or createdBy, or require an explicit admin guard."
+    }
+  );
+
+  assert.deepEqual(
+    findings.find(
+      (finding) =>
+        finding.ruleId === "webhook-and-agent-abuse" &&
+        finding.file === "app/api/webhooks/stripe/route.ts"
+    ),
+    {
+      id: "webhook-and-agent-abuse:app/api/webhooks/stripe/route.ts:3",
+      ruleId: "webhook-and-agent-abuse",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "app/api/webhooks/stripe/route.ts",
+      line: 3,
+      message:
+        "Webhook route processes payload and reaches a sensitive sink without visible signature verification.",
+      exploitPath:
+        "An attacker can forge webhook requests and trigger sensitive side effects when the route processes webhook payloads without verifying the provider signature.",
+      patch:
+        "Verify the provider signature before processing the payload or triggering side effects. Use provider-specific verification such as stripe.webhooks.constructEvent or Webhook.verify."
+    }
+  );
+
+  assert.deepEqual(
+    findings.find(
+      (finding) =>
+        finding.ruleId === "webhook-and-agent-abuse" &&
+        finding.file === "app/api/webhook/orders/route.ts"
+    ),
+    {
+      id: "webhook-and-agent-abuse:app/api/webhook/orders/route.ts:3",
+      ruleId: "webhook-and-agent-abuse",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "app/api/webhook/orders/route.ts",
+      line: 3,
+      message:
+        "Webhook route processes payload and reaches a sensitive sink without visible signature verification.",
+      exploitPath:
+        "An attacker can forge webhook requests and trigger sensitive side effects when the route processes webhook payloads without verifying the provider signature.",
+      patch:
+        "Verify the provider signature before processing the payload or triggering side effects. Use provider-specific verification such as stripe.webhooks.constructEvent or Webhook.verify."
     }
   );
 });

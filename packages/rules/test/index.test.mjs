@@ -5,6 +5,7 @@ import {
   RULE_IDS,
   matchBrokenAuthorization,
   matchExposedSupabaseServiceRoleKey,
+  matchWebhookSignatureVerification,
   matchUnsafeMutation
 } from "../dist/index.js";
 
@@ -232,4 +233,108 @@ test("flags auth without ownership constraint as likely broken authorization", (
   assert.equal(matches[0]?.line, 4);
   assert.equal(matches[0]?.severity, "high");
   assert.equal(matches[0]?.confidence, "likely");
+});
+
+test("detects Stripe webhook raw body and DB write without constructEvent", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/webhooks/stripe/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.text();",
+      "  await prisma.event.create({ data: { payload: body } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 3);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("detects generic webhook JSON body and DB mutation without signature verification", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/webhook/orders/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await db.order.update({ data: payload });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 3);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("flags webhook signature header reads without visible verification as likely", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/webhooks/github/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      '  const signature = request.headers.get("x-hub-signature-256");',
+      "  const payload = await request.text();",
+      '  await fetch("https://example.com/process", { method: "POST", body: payload });',
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 4);
+  assert.equal(matches[0]?.severity, "high");
+  assert.equal(matches[0]?.confidence, "likely");
+});
+
+test("does not flag Stripe webhook with constructEvent before DB write", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/webhooks/stripe-safe/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      '  const signature = request.headers.get("stripe-signature");',
+      "  const body = await request.text();",
+      "  const event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);",
+      '  await prisma.event.create({ data: { eventId: event.id } });',
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag Clerk/Svix webhook with Webhook.verify before mutation", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/webhooks/clerk/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      '  const svixSignature = request.headers.get("svix-signature");',
+      "  const body = await request.text();",
+      "  const event = Webhook.verify(body, svixSignature);",
+      "  await db.user.update({ data: { lastEventId: event.id } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag non-webhook API route for signature verification", () => {
+  const matches = matchWebhookSignatureVerification({
+    relativePath: "app/api/users/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.json();",
+      "  await prisma.user.create({ data: body });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
 });
