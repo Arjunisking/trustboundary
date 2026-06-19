@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "trustboundary.git Docs": {
+      "type": "sse",
+      "url": "https://gitmcp.io/Arjunisking/trustboundary.git"
+    }
+  }
+}

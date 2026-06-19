@@ -2,31 +2,43 @@
 
 Deterministic pre-deploy security scanner for AI-generated web apps.
 
-TrustBoundary focuses on high-signal evidence. Current release slice detects exposed Supabase service role keys in client-side Next.js code, unsafe request-body mutation flows, broken authorization in sensitive Next.js API routes and server actions, broad public Supabase/Firebase policy failures, and webhook routes that perform sensitive actions without visible signature verification, returns JSON, writes escaped HTML reports, and gates CI through a GitHub Action.
+TrustBoundary scans committed repository text for high-signal security mistakes common in fast AI-built apps. It does not execute scanned project code, does not import scanned files, and treats all scanned content as untrusted input.
 
-## Current Slice
+## V1 Rules
 
-- Rule 1: exposed Supabase service role key in client-side Next.js code
-- Rule 2: unsafe request body mutation flow into database writes
-- Rule 3: broken authorization on sensitive Next.js API routes and server actions
-- Rule 4 slice: Supabase/Firebase RLS failure detection from committed SQL/rule text
-- Rule 5 slice: webhook signature verification on inbound webhook routes
-- Blocking severity today: Confirmed Critical only
-- Interfaces:
-  - core scanner
-  - CLI
-  - self-contained HTML report
-  - GitHub Action gate
+| Rule | What it detects | Typical severity/confidence |
+| --- | --- | --- |
+| `exposed-secrets` | Supabase service role keys or service-role JWTs exposed to client-side code | `critical/confirmed` |
+| `unsafe-mutation` | Request body flowing directly into database mutations without visible validation or allowlisting | `high/likely` |
+| `broken-authorization` | Sensitive API routes or server actions that reach DB reads/writes without visible auth or ownership checks | `high/confirmed` or `high/likely` |
+| `rls-failures` | Supabase SQL policies or Firebase rules that visibly allow broad public read/write access | `critical/confirmed`, sometimes `high/likely` |
+| `webhook-and-agent-abuse` | Webhook routes that process payloads and reach sensitive sinks without visible signature verification | `critical/confirmed` or `high/likely` |
 
-## Current Commands
+## Gating
 
-Install workspace deps:
+- Blocking behavior today: `critical/confirmed` only
+- CLI with `--enforce` exits `1` only when Confirmed Critical findings exist
+- GitHub Action fails only when Confirmed Critical findings exist and `enforce` is enabled
+- `high/confirmed`, `high/likely`, and `unverified` findings are warning-only by default
+- Clean blocking status wording is always `No Confirmed Critical issues found.`
+
+## Install
+
+Install workspace dependencies:
 
 ```bash
 pnpm install
 ```
 
-Human summary:
+Build local packages before first CLI use:
+
+```bash
+pnpm build
+```
+
+## CLI
+
+Human summary scan:
 
 ```bash
 pnpm trustboundary scan examples/insecure-next-supabase
@@ -41,39 +53,68 @@ pnpm trustboundary scan examples/insecure-next-supabase --json
 HTML report:
 
 ```bash
-pnpm trustboundary scan examples/insecure-next-supabase --report report.html
+pnpm trustboundary scan examples/insecure-next-supabase --report trustboundary-report.html
 ```
 
-Enforcement mode:
+Enforced exit code:
 
 ```bash
 pnpm trustboundary scan examples/insecure-next-supabase --enforce
 ```
 
-Clean blocking status wording:
+CLI usage:
 
 ```text
-No Confirmed Critical issues found.
+trustboundary scan <target-directory> [--json] [--report <file>] [--enforce]
 ```
 
-## JSON Fields
+## JSON Output
 
-Current CLI JSON separates finding status from process exit behavior:
+Top-level JSON fields:
 
-- `summary.blocking`: summary-level blocking status from scanner findings
-- `hasBlockingFindings`: explicit top-level alias for blocking status
+- `targetPath`: absolute or resolved scan target path
+- `summary.totalFindings`: total findings returned by current rules
+- `summary.confirmedCriticalCount`: findings that currently block by default
+- `summary.blocking`: summary-level blocking status based on Confirmed Critical findings only
+- `hasBlockingFindings`: top-level alias of `summary.blocking`
 - `enforcementEnabled`: whether `--enforce` was used
 - `exitCode`: actual CLI exit behavior
+- `findings`: individual findings with `ruleId`, `severity`, `confidence`, `file`, `line`, `message`, `exploitPath`, and `patch`
 
-This avoids confusion when blocking findings exist but enforcement is off.
+Example shape:
+
+```json
+{
+  "targetPath": "D:\\PROJECTS\\trustboundary\\examples\\insecure-next-supabase",
+  "summary": {
+    "totalFindings": 16,
+    "confirmedCriticalCount": 6,
+    "blocking": true,
+    "statusMessage": "Confirmed Critical findings: 6"
+  },
+  "hasBlockingFindings": true,
+  "enforcementEnabled": false,
+  "exitCode": 0,
+  "findings": []
+}
+```
+
+This separation avoids confusion when blocking findings exist but enforcement is off.
+
+## HTML Report
+
+- Generates one self-contained HTML file
+- Escapes untrusted file paths, messages, exploit paths, patches, and target paths
+- Reports deterministic repository evidence only
+- Does not claim the repository is secure or fully assessed
 
 ## GitHub Action
 
 Inputs:
 
-- `target_path`: repo path to scan, default `.`
+- `target_path`: repository path to scan, default `.`
 - `enforce`: default `"true"`
-- `report_path`: optional HTML report output path
+- `report_path`: optional HTML report path inside workspace
 
 Outputs:
 
@@ -86,7 +127,7 @@ Behavior:
 
 - passes when no Confirmed Critical findings exist
 - fails only when Confirmed Critical findings exist and enforcement is enabled
-- lower severities, likely, and unverified findings do not fail action by themselves
+- lower severities, likely, and unverified findings do not fail the action by themselves
 
 Minimal workflow:
 
@@ -137,9 +178,13 @@ jobs:
           echo "report_path=${{ steps.trustboundary.outputs.report_path }}"
 ```
 
+## Example Fixture
+
+`examples/insecure-next-supabase` is intentionally unsafe. It includes API routes, webhook handlers, Supabase SQL policies, and Firebase rules that exercise all 5 V1 rules. See [examples/insecure-next-supabase/README.md](/D:/PROJECTS/trustboundary/examples/insecure-next-supabase/README.md:1).
+
 ## V1 Scope
 
-TrustBoundary V1 aims at 5 deadly AI-generated security patterns:
+TrustBoundary V1 focuses on 5 AI-generated security patterns:
 
 1. Exposed secrets
 2. Unsafe mutations
@@ -147,7 +192,14 @@ TrustBoundary V1 aims at 5 deadly AI-generated security patterns:
 4. Supabase/Firebase rule failures
 5. Webhook and AI-agent abuse
 
-Current shipped implementation covers first slice of item 1, first slice of item 2, first slice of item 3, first slice of item 4, and first slice of item 5.
+## Commands
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
 ## Philosophy
 

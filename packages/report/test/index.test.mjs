@@ -57,3 +57,32 @@ test("@trustboundary/report uses safe summary wording for clean scans", () => {
   assert.match(html, /No Confirmed Critical issues found\./);
   assert.equal(html.includes("the app is secure"), false);
 });
+
+test("@trustboundary/report keeps findings title when only non-blocking findings exist", () => {
+  const html = renderHtmlReport({
+    targetPath: "examples/insecure-next-supabase",
+    summary: {
+      totalFindings: 1,
+      confirmedCriticalCount: 0,
+      blocking: false,
+      statusMessage: "No Confirmed Critical issues found."
+    },
+    findings: [
+      {
+        id: "finding-2",
+        ruleId: "broken-authorization",
+        severity: "high",
+        confidence: "likely",
+        file: "app/api/billing/route.ts",
+        line: 7,
+        message: "Ownership check missing.",
+        exploitPath: "Cross-tenant read possible.",
+        patch: "Add user-scoped where clause."
+      }
+    ]
+  });
+
+  assert.match(html, /TrustBoundary findings: 1/);
+  assert.match(html, /No Confirmed Critical issues found\./);
+  assert.equal(html.includes("the app is secure"), false);
+});

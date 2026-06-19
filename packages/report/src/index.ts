@@ -46,7 +46,7 @@ export interface ReportDocumentInput {
 
 export function renderHtmlReport(input: ReportDocumentInput): string {
   const title =
-    input.summary.confirmedCriticalCount > 0
+    input.findings.length > 0
       ? `TrustBoundary findings: ${input.summary.totalFindings}`
       : "No Confirmed Critical issues found";
 
