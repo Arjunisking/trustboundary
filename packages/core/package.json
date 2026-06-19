@@ -1,7 +1,9 @@
 {
   "name": "@trustboundary/core",
+  "description": "Core scanner engine for deterministic TrustBoundary findings.",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@trustboundary/rules": "workspace:*"

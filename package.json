@@ -1,6 +1,8 @@
 {
   "name": "trustboundary",
+  "description": "Deterministic pre-deploy security scanner for AI-generated web apps.",
   "private": true,
+  "license": "MIT",
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@11.7.0",

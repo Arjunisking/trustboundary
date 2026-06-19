@@ -1,7 +1,9 @@
 {
   "name": "@trustboundary/rules",
+  "description": "Deterministic TrustBoundary rule implementations and fixtures.",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "src/index.ts",

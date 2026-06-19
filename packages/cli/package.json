@@ -1,7 +1,9 @@
 {
   "name": "@trustboundary/cli",
+  "description": "CLI for TrustBoundary deterministic repository scans.",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@trustboundary/core": "workspace:*",

@@ -1,7 +1,9 @@
 {
   "name": "@trustboundary/report",
+  "description": "Escaped self-contained HTML report generator for TrustBoundary scans.",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@trustboundary/core": "workspace:*"

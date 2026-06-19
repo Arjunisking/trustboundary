@@ -38,6 +38,14 @@ test("@trustboundary/cli returns stable JSON output", async () => {
     json.findings.some((finding) => finding.ruleId === "unsafe-mutation"),
     true
   );
+  assert.equal(
+    json.findings.some((finding) => finding.ruleId === "rls-failures"),
+    true
+  );
+  assert.equal(
+    json.findings.some((finding) => finding.ruleId === "webhook-and-agent-abuse"),
+    true
+  );
   assert.equal(json.findings[0].severity, "critical");
   assert.equal(json.findings[0].confidence, "confirmed");
 });

@@ -1,7 +1,9 @@
 {
   "name": "@trustboundary/action",
+  "description": "GitHub Action wrapper for TrustBoundary confirmed-critical gating.",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@trustboundary/core": "workspace:*",
