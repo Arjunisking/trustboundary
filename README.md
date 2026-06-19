@@ -4,6 +4,14 @@ Deterministic pre-deploy security scanner for AI-generated web apps.
 
 TrustBoundary scans committed repository text for high-signal security mistakes common in fast AI-built apps. It does not execute scanned project code, does not import scanned files, and treats all scanned content as untrusted input.
 
+## Release Model
+
+TrustBoundary V1 is a repository and GitHub Action release.
+
+- Workspace packages remain `private: true`
+- V1 is not configured for npm publishing yet
+- Future npm publishing would require public package metadata, publish configuration, and a supported distribution strategy for the CLI and action
+
 ## V1 Rules
 
 | Rule | What it detects | Typical severity/confidence |
@@ -85,7 +93,7 @@ Example shape:
 
 ```json
 {
-  "targetPath": "D:\\PROJECTS\\trustboundary\\examples\\insecure-next-supabase",
+  "targetPath": "/repo/examples/insecure-next-supabase",
   "summary": {
     "totalFindings": 16,
     "confirmedCriticalCount": 6,
@@ -110,26 +118,7 @@ This separation avoids confusion when blocking findings exist but enforcement is
 
 ## GitHub Action
 
-Inputs:
-
-- `target_path`: repository path to scan, default `.`
-- `enforce`: default `"true"`
-- `report_path`: optional HTML report path inside workspace
-
-Outputs:
-
-- `total_findings`
-- `confirmed_critical_count`
-- `blocked`
-- `report_path`
-
-Behavior:
-
-- passes when no Confirmed Critical findings exist
-- fails only when Confirmed Critical findings exist and enforcement is enabled
-- lower severities, likely, and unverified findings do not fail the action by themselves
-
-Minimal workflow:
+Public release usage after tagging this repository:
 
 ```yaml
 name: TrustBoundary
@@ -145,28 +134,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.7.0
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
       - name: Run TrustBoundary
         id: trustboundary
-        uses: ./
+        uses: OWNER/trustboundary@v1
         with:
-          target_path: examples/insecure-next-supabase
+          target_path: .
           enforce: "true"
           report_path: trustboundary-report.html
 
@@ -178,9 +150,31 @@ jobs:
           echo "report_path=${{ steps.trustboundary.outputs.report_path }}"
 ```
 
+Action behavior:
+
+- installs TrustBoundary dependencies inside the action repository
+- builds TrustBoundary inside the action repository
+- scans the checked-out target repository text only
+- passes when no Confirmed Critical findings exist
+- fails only when Confirmed Critical findings exist and enforcement is enabled
+- does not require the target repository to run `pnpm install` or `pnpm build`
+
+Action inputs:
+
+- `target_path`: repository path to scan, default `.`
+- `enforce`: default `"true"`
+- `report_path`: optional HTML report path inside workspace
+
+Action outputs:
+
+- `total_findings`
+- `confirmed_critical_count`
+- `blocked`
+- `report_path`
+
 ## Example Fixture
 
-`examples/insecure-next-supabase` is intentionally unsafe. It includes API routes, webhook handlers, Supabase SQL policies, and Firebase rules that exercise all 5 V1 rules. See [examples/insecure-next-supabase/README.md](/D:/PROJECTS/trustboundary/examples/insecure-next-supabase/README.md:1).
+`examples/insecure-next-supabase` is intentionally unsafe. It includes API routes, webhook handlers, Supabase SQL policies, and Firebase rules that exercise all 5 V1 rules. See [examples/insecure-next-supabase/README.md](examples/insecure-next-supabase/README.md).
 
 ## V1 Scope
 
