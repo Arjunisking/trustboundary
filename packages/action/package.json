@@ -22,7 +22,7 @@
     "dist-bundle"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node ./scripts/bundle.mjs",
+    "build": "node ./scripts/clean.mjs && tsc -p tsconfig.build.json && node ./scripts/bundle.mjs",
     "bundle": "node ./scripts/bundle.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "pnpm --filter @trustboundary/core build && pnpm --filter @trustboundary/report build && pnpm run build && node --test test/**/*.test.mjs"

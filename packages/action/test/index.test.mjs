@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 
 import {
   createActionOutputs,
@@ -16,6 +16,7 @@ const repoRoot = path.resolve(process.cwd(), "../..");
 const insecureFixture = path.join(repoRoot, "examples/insecure-next-supabase");
 const actionMetadataPath = path.join(repoRoot, "action.yml");
 const bundledEntryPath = path.join(repoRoot, "packages/action/dist-bundle/index.cjs");
+const bundledSourceMapPath = path.join(repoRoot, "packages/action/dist-bundle/index.cjs.map");
 
 test("@trustboundary/action parses inputs with default enforcement", () => {
   const inputs = parseActionInputs({
@@ -38,10 +39,9 @@ test("@trustboundary/action metadata uses bundled node24 release path", async ()
   assert.equal(actionMetadata.includes("pnpm build"), false);
 });
 
-test("@trustboundary/action build emits bundled artifact without sourcemap", async () => {
-  const bundleCode = await readFile(bundledEntryPath, "utf8");
-
-  assert.equal(bundleCode.includes("sourceMappingURL"), false);
+test("@trustboundary/action build emits bundled artifact without sourcemap file", async () => {
+  await access(bundledEntryPath);
+  await assert.rejects(access(bundledSourceMapPath));
 });
 
 test("@trustboundary/action fails for Confirmed Critical findings", async () => {
