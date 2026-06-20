@@ -15,6 +15,7 @@ import {
 const repoRoot = path.resolve(process.cwd(), "../..");
 const insecureFixture = path.join(repoRoot, "examples/insecure-next-supabase");
 const actionMetadataPath = path.join(repoRoot, "action.yml");
+const bundledEntryPath = path.join(repoRoot, "packages/action/dist-bundle/index.cjs");
 
 test("@trustboundary/action parses inputs with default enforcement", () => {
   const inputs = parseActionInputs({
@@ -28,14 +29,19 @@ test("@trustboundary/action parses inputs with default enforcement", () => {
   });
 });
 
-test("@trustboundary/action metadata uses composite install-build-run release path", async () => {
+test("@trustboundary/action metadata uses bundled node24 release path", async () => {
   const actionMetadata = await readFile(actionMetadataPath, "utf8");
 
-  assert.match(actionMetadata, /using: composite/);
-  assert.match(actionMetadata, /pnpm install --frozen-lockfile/);
-  assert.match(actionMetadata, /pnpm build/);
-  assert.match(actionMetadata, /node packages\/action\/dist\/bin\.js/);
-  assert.equal(actionMetadata.includes("using: node20"), false);
+  assert.match(actionMetadata, /using: node24/);
+  assert.match(actionMetadata, /main: packages\/action\/dist-bundle\/index\.cjs/);
+  assert.equal(actionMetadata.includes("pnpm install"), false);
+  assert.equal(actionMetadata.includes("pnpm build"), false);
+});
+
+test("@trustboundary/action build emits bundled artifact without sourcemap", async () => {
+  const bundleCode = await readFile(bundledEntryPath, "utf8");
+
+  assert.equal(bundleCode.includes("sourceMappingURL"), false);
 });
 
 test("@trustboundary/action fails for Confirmed Critical findings", async () => {

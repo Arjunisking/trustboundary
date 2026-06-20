@@ -16,46 +16,12 @@ inputs:
 outputs:
   total_findings:
     description: Total findings detected by TrustBoundary
-    value: ${{ steps.run_scan.outputs.total_findings }}
   confirmed_critical_count:
     description: Confirmed Critical findings detected by TrustBoundary
-    value: ${{ steps.run_scan.outputs.confirmed_critical_count }}
   blocked:
     description: Whether action blocked because enforcement was enabled and Confirmed Critical findings existed
-    value: ${{ steps.run_scan.outputs.blocked }}
   report_path:
     description: HTML report path when report output was requested
-    value: ${{ steps.run_scan.outputs.report_path }}
 runs:
-  using: composite
-  steps:
-    - name: Install pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: 11.7.0
-
-    - name: Install Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 22
-
-    - name: Install TrustBoundary dependencies
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: pnpm install --frozen-lockfile
-
-    - name: Build TrustBoundary
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: pnpm build
-
-    - name: Run TrustBoundary
-      id: run_scan
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        GITHUB_WORKSPACE: ${{ github.workspace }}
-        INPUT_TARGET_PATH: ${{ inputs.target_path }}
-        INPUT_ENFORCE: ${{ inputs.enforce }}
-        INPUT_REPORT_PATH: ${{ inputs.report_path }}
-      run: node packages/action/dist/bin.js
+  using: node24
+  main: packages/action/dist-bundle/index.cjs
