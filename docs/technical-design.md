@@ -30,15 +30,19 @@ Finding fields:
 - Unverified: scanner lacks required evidence
 
 ## Default gating
-- main branch: block Confirmed Critical
-- pull requests: warn, block only Confirmed Critical by default
-- dev branches: warn only
+- all branches: block only Confirmed Critical
+- suppressed critical findings remain visible in reports but do not fail CI
+- V1 has no automated advisory rules
 
 ## V1 engine strategy
 Use deterministic parsing first:
-- file walking
-- regex and string rules for secrets and committed RLS/rule files
-- TypeScript AST later for unsafe mutations and authorization flow
+- file walking over committed repository evidence only
+- deterministic text and structure matching for `TB001`, `TB002`, and `TB003`
+- no execution of scanned code
+- no imports from scanned repos
+- no scanned-repo script execution
+
+Default ignored reference content such as docs, tests, fixtures, and examples must be configurable and bypassable in tests so insecure fixtures can still be scanned.
 
 ## Report strategy
 Generate one self-contained HTML file with escaped content and no external dependencies.
