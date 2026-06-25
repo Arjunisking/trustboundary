@@ -22,7 +22,7 @@ test("@trustboundary/report renders escaped findings", () => {
     findings: [
       {
         id: "finding-1",
-        ruleId: "exposed-secrets",
+        ruleId: "TB001",
         severity: "critical",
         confidence: "confirmed",
         file: "app/page.tsx",

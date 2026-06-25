@@ -37,6 +37,10 @@ export interface ScanFile {
   content: string;
 }
 
+export interface ScanOptions {
+  useDefaultIgnorePaths?: boolean;
+}
+
 export const NO_FINDINGS: Finding[] = [];
 export const NO_CONFIRMED_CRITICAL_MESSAGE = "No Confirmed Critical issues found.";
 
@@ -50,12 +54,31 @@ const SKIPPED_DIRECTORIES = new Set([
   "dist",
   "node_modules"
 ]);
+const DEFAULT_IGNORED_PATH_PATTERNS = [
+  /^docs\//i,
+  /(^|\/)README[^/]*$/i,
+  /^examples\//i,
+  /^fixtures\//i,
+  /(^|\/)[^/]*tests[^/]*\//i,
+  /(^|\/)__tests__\//i,
+  /\.test\.[^/]+$/i,
+  /\.spec\.[^/]+$/i,
+  /(^|\/)cypress\//i,
+  /(^|\/)playwright\//i
+] as const;
 
-export async function walkFiles(rootPath: string): Promise<ScanFile[]> {
+export async function walkFiles(
+  rootPath: string,
+  options: ScanOptions = {}
+): Promise<ScanFile[]> {
   const normalizedRoot = path.resolve(rootPath);
   const entries = await walkDirectory(normalizedRoot, normalizedRoot);
 
-  return entries.filter((entry) => isScannableFilePath(entry.relativePath));
+  return entries.filter(
+    (entry) =>
+      isScannableFilePath(entry.relativePath) &&
+      !isIgnoredPath(entry.relativePath, options)
+  );
 }
 
 async function walkDirectory(
@@ -100,12 +123,23 @@ function isScannableFilePath(relativePath: string): boolean {
   );
 }
 
+function isIgnoredPath(relativePath: string, options: ScanOptions): boolean {
+  if (options.useDefaultIgnorePaths === false) {
+    return false;
+  }
+
+  return DEFAULT_IGNORED_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
 function createFindingId(ruleId: string, relativePath: string, line: number): string {
   return `${ruleId}:${relativePath}:${line}`;
 }
 
-export async function scanRepository(rootPath: string): Promise<Finding[]> {
-  const files = await walkFiles(rootPath);
+export async function scanRepository(
+  rootPath: string,
+  options: ScanOptions = {}
+): Promise<Finding[]> {
+  const files = await walkFiles(rootPath, options);
   const findings: Finding[] = [];
 
   for (const file of files) {

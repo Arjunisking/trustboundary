@@ -33,7 +33,7 @@ test("@trustboundary/cli returns stable JSON output", async () => {
   assert.equal(json.hasBlockingFindings, true);
   assert.equal(json.enforcementEnabled, false);
   assert.equal(json.exitCode, 0);
-  assert.equal(json.findings[0].ruleId, "exposed-secrets");
+  assert.equal(json.findings[0].ruleId, "TB001");
   assert.equal(
     json.findings.some((finding) => finding.ruleId === "unsafe-mutation"),
     true

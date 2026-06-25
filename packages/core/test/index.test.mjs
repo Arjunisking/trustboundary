@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
 import path from "node:path";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 
 import { scanRepository, walkFiles } from "../dist/index.js";
 
@@ -40,7 +42,7 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, broken auth
   assert.equal(findings.length, 16);
 
   const secretFinding = findings.find(
-    (finding) => finding.ruleId === "exposed-secrets"
+    (finding) => finding.ruleId === "TB001"
   );
   const unsafeFinding = findings.find(
     (finding) =>
@@ -49,17 +51,17 @@ test("@trustboundary/core detects exposed secrets, unsafe mutations, broken auth
   );
 
   assert.deepEqual(secretFinding, {
-    id: "exposed-secrets:app/admin/page.tsx:3",
-    ruleId: "exposed-secrets",
+    id: "TB001:app/admin/page.tsx:3",
+    ruleId: "TB001",
     severity: "critical",
     confidence: "confirmed",
     file: "app/admin/page.tsx",
     line: 3,
-    message: "Supabase service role env key referenced in client-side code.",
+    message: "Public env identifier exposes server/private secret material to browser code.",
     exploitPath:
-      "Anyone can extract the key from the browser bundle and bypass database permissions.",
+      "Anyone can extract the secret from browser-delivered code and use privileged access outside intended server-side controls.",
     patch:
-      "Move the service role key to a server-only module or API route. Remove any client-side reference and use a public anon key in browser code."
+      "Move the secret to server-only code or a secret manager. Do not expose service, private, admin, token, or server keys to browser bundles; use publishable or anon keys instead."
   });
 
   assert.deepEqual(unsafeFinding, {
@@ -279,4 +281,25 @@ test("@trustboundary/core does not flag safe server-only or validated mutation u
     findings.some((finding) => finding.file === "storage.rules"),
     false
   );
+});
+
+test("@trustboundary/core ignores examples by default but can bypass ignores for internal fixtures", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "trustboundary-ignore-"));
+  const nestedDir = path.join(tempRoot, "examples", "app");
+  await mkdir(nestedDir, { recursive: true });
+  await writeFile(
+    path.join(nestedDir, "page.tsx"),
+    ['"use client";', 'const secret = "sk_live_1234567890abcdef123456";'].join("\n"),
+    "utf8"
+  );
+
+  const defaultFindings = await scanRepository(tempRoot);
+  const bypassedFindings = await scanRepository(tempRoot, {
+    useDefaultIgnorePaths: false
+  });
+
+  assert.deepEqual(defaultFindings, []);
+  assert.equal(bypassedFindings.length, 1);
+  assert.equal(bypassedFindings[0]?.ruleId, "TB001");
+  assert.equal(bypassedFindings[0]?.file, "examples/app/page.tsx");
 });

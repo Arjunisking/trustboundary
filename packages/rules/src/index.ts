@@ -1,7 +1,7 @@
 import ts from "typescript";
 
 export const RULE_IDS = [
-  "exposed-secrets",
+  "TB001",
   "unsafe-mutation",
   "broken-authorization",
   "rls-failures",
@@ -49,11 +49,11 @@ interface SensitiveSink {
   node: ts.Node;
 }
 
-const EXPOSED_SUPABASE_SERVICE_ROLE_RULE_ID = "exposed-secrets";
+const EXPOSED_SUPABASE_SERVICE_ROLE_RULE_ID = "TB001";
 const EXPLOIT_PATH =
-  "Anyone can extract the key from the browser bundle and bypass database permissions.";
+  "Anyone can extract the secret from browser-delivered code and use privileged access outside intended server-side controls.";
 const PATCH =
-  "Move the service role key to a server-only module or API route. Remove any client-side reference and use a public anon key in browser code.";
+  "Move the secret to server-only code or a secret manager. Do not expose service, private, admin, token, or server keys to browser bundles; use publishable or anon keys instead.";
 const UNSAFE_MUTATION_RULE_ID = "unsafe-mutation";
 const UNSAFE_MUTATION_EXPLOIT_PATH =
   "An attacker can send unexpected fields in the request body and mutate database records without validation or allowlisting.";
@@ -87,14 +87,18 @@ const WEBHOOK_SIGNATURE_LIKELY_EXPLOIT_PATH =
 const WEBHOOK_SIGNATURE_LIKELY_PATCH =
   "Keep signature header reads, but add a visible verification step such as stripe.webhooks.constructEvent, Webhook.verify, verifySignature, or timingSafeEqual before the sensitive sink.";
 
-const FRONTEND_PATH_PATTERNS = [
-  /^app\//,
-  /^pages\//,
-  /^components\//,
-  /^src\/app\//,
-  /^src\/pages\//,
-  /^src\/components\//
+const NEXT_APP_CLIENT_ENTRY_PATH_PATTERNS = [
+  /^(?:src\/)?app\/(?:.+\/)?(?:page|layout)\.[cm]?[jt]sx?$/
 ] as const;
+const NEXT_PAGES_CLIENT_PATH_PATTERNS = [
+  /^(?:src\/)?pages\/.+\.[cm]?[jt]sx?$/
+] as const;
+const VITE_CLIENT_ENTRY_PATH_PATTERNS = [
+  /^src\/(?:main|app)\.[cm]?[jt]sx?$/,
+  /^src\/(?:components|pages|routes|app)\/.+\.(?:[cm]?[jt]sx?|vue|svelte)$/
+] as const;
+const NUXT_CLIENT_PATH_PATTERNS = [/\.client\.[^/]+$/, /\.vue$/] as const;
+const SVELTE_CLIENT_PATH_PATTERNS = [/\.svelte$/] as const;
 
 const SERVER_ONLY_PATH_PATTERNS = [
   /^app\/api\//,
@@ -307,11 +311,19 @@ const OWNERSHIP_SQL_MARKERS = [
   "organization_id"
 ] as const;
 
-const SERVICE_ROLE_ENV_REF = /\bprocess\.env\.SUPABASE_SERVICE_ROLE_KEY\b/;
-const NEXT_PUBLIC_SERVICE_ROLE_MISUSE =
-  /\bNEXT_PUBLIC_[A-Z0-9_]*SERVICE_ROLE[A-Z0-9_]*\b/;
+const PUBLIC_ENV_RISKY_IDENTIFIER =
+  /\b(?:NEXT_PUBLIC_|VITE_|PUBLIC_)[A-Z0-9_]*(?:SERVICE_ROLE|SECRET|PRIVATE|ADMIN|TOKEN|API_KEY|SERVER)[A-Z0-9_]*\b/;
 const JWT_LIKE_TOKEN = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/;
-const SERVICE_ROLE_JWT_MARKERS = /(service_role|c2VydmljZV9yb2xl)/i;
+const SUPABASE_SERVICE_ROLE_PROOF =
+  /(service_role|SUPABASE_SERVICE_ROLE|supabase|c2VydmljZV9yb2xl)/i;
+const STRIPE_LIVE_SECRET_PATTERN = /\b(?:sk_live|rk_live)_[A-Za-z0-9]{10,}\b/;
+const GITHUB_TOKEN_PATTERN =
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{10,}\b|\bgithub_pat_[A-Za-z0-9_]{10,}\b/;
+const SHOPIFY_ADMIN_TOKEN_PATTERN = /\bshpat_[A-Za-z0-9]{10,}\b/;
+const CLERK_SECRET_ASSIGNMENT_PATTERN =
+  /\bCLERK_SECRET_KEY\b[^"'\r\n]*["'](?:sk_(?:live|test)_[A-Za-z0-9]{10,})["']/i;
+const CLERK_NEARBY_SECRET_PATTERN =
+  /\bclerk\b.*\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b|\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b.*\bclerk\b/i;
 const USE_CLIENT = /^['"]use client['"];?\s*$/m;
 const REQUEST_BODY_SOURCE =
   /(?:await\s+(?:request|req|event\.request)\.json\(\)|(?:request|req)\.body)/;
@@ -334,12 +346,27 @@ function normalizePath(relativePath: string): string {
   return relativePath.replaceAll("\\", "/");
 }
 
-function isFrontendPath(relativePath: string): boolean {
-  return FRONTEND_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
-}
-
 function isServerOnlyPath(relativePath: string): boolean {
   return SERVER_ONLY_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isNextClientEntryPath(relativePath: string): boolean {
+  return (
+    NEXT_APP_CLIENT_ENTRY_PATH_PATTERNS.some((pattern) => pattern.test(relativePath)) ||
+    NEXT_PAGES_CLIENT_PATH_PATTERNS.some((pattern) => pattern.test(relativePath))
+  );
+}
+
+function isViteClientEntryPath(relativePath: string): boolean {
+  return VITE_CLIENT_ENTRY_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isNuxtClientPath(relativePath: string): boolean {
+  return NUXT_CLIENT_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+
+function isSvelteClientPath(relativePath: string): boolean {
+  return SVELTE_CLIENT_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
 }
 
 function isClientSideFile(file: RuleFile): boolean {
@@ -348,23 +375,64 @@ function isClientSideFile(file: RuleFile): boolean {
     return false;
   }
 
-  return USE_CLIENT.test(file.content) || isFrontendPath(relativePath);
+  if (USE_CLIENT.test(file.content)) {
+    return true;
+  }
+
+  return (
+    isNextClientEntryPath(relativePath) ||
+    isViteClientEntryPath(relativePath) ||
+    isNuxtClientPath(relativePath) ||
+    isSvelteClientPath(relativePath)
+  );
 }
 
-function detectLineMatch(line: string): string | null {
-  if (SERVICE_ROLE_ENV_REF.test(line)) {
-    return "Supabase service role env key referenced in client-side code.";
+function hasNearbySupabaseServiceRoleProof(
+  lines: string[],
+  lineIndex: number
+): boolean {
+  const start = Math.max(0, lineIndex - 2);
+  const end = Math.min(lines.length, lineIndex + 3);
+  const nearbyText = lines.slice(start, end).join("\n");
+
+  return SUPABASE_SERVICE_ROLE_PROOF.test(nearbyText);
+}
+
+function detectKnownSecretMessage(line: string): string | null {
+  if (SHOPIFY_ADMIN_TOKEN_PATTERN.test(line)) {
+    return "Shopify admin/private token embedded in browser-exposed code.";
   }
 
-  if (NEXT_PUBLIC_SERVICE_ROLE_MISUSE.test(line)) {
-    return "NEXT_PUBLIC service role key reference exposes privileged Supabase access to the browser.";
+  if (GITHUB_TOKEN_PATTERN.test(line)) {
+    return "GitHub token embedded in browser-exposed code.";
   }
 
-  if (JWT_LIKE_TOKEN.test(line) && SERVICE_ROLE_JWT_MARKERS.test(line)) {
-    return "Supabase service_role JWT-like token embedded in client-side code.";
+  if (
+    CLERK_SECRET_ASSIGNMENT_PATTERN.test(line) ||
+    CLERK_NEARBY_SECRET_PATTERN.test(line)
+  ) {
+    return "Clerk secret key embedded in browser-exposed code.";
+  }
+
+  if (STRIPE_LIVE_SECRET_PATTERN.test(line)) {
+    return "Known live secret prefix embedded in browser-exposed code.";
   }
 
   return null;
+}
+
+function detectLineMatch(lines: string[], lineIndex: number): string | null {
+  const line = lines[lineIndex] ?? "";
+
+  if (PUBLIC_ENV_RISKY_IDENTIFIER.test(line)) {
+    return "Public env identifier exposes server/private secret material to browser code.";
+  }
+
+  if (JWT_LIKE_TOKEN.test(line) && hasNearbySupabaseServiceRoleProof(lines, lineIndex)) {
+    return "Supabase service_role JWT-like token embedded in browser-exposed code.";
+  }
+
+  return detectKnownSecretMessage(line);
 }
 
 function lineNumberFromIndex(content: string, index: number): number {
@@ -1430,8 +1498,8 @@ export function matchExposedSupabaseServiceRoleKey(file: RuleFile): RuleMatch[] 
   const findings: RuleMatch[] = [];
   const lines = file.content.split(/\r?\n/);
 
-  for (const [index, line] of lines.entries()) {
-    const message = detectLineMatch(line);
+  for (const [index] of lines.entries()) {
+    const message = detectLineMatch(lines, index);
     if (!message) {
       continue;
     }

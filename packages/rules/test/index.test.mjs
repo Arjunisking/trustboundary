@@ -12,11 +12,72 @@ import {
 
 test("@trustboundary/rules exports V1 rule ids", () => {
   assert.equal(RULE_IDS.length, 5);
-  assert.equal(RULE_IDS[0], "exposed-secrets");
+  assert.equal(RULE_IDS[0], "TB001");
   assert.equal(RULE_IDS[1], "unsafe-mutation");
 });
 
-test("detects client-side service role env reference", () => {
+test("detects hardcoded Stripe live secret in browser-exposed Next.js page", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "app/page.tsx",
+    content: [
+      '"use client";',
+      'const secret = "sk_live_1234567890abcdef123456";'
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 2);
+});
+
+test("detects NEXT_PUBLIC service role misuse", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "src/components/admin-panel.tsx",
+    content: [
+      '"use client";',
+      "export const adminConfig = {",
+      '  serviceRoleKey: process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY',
+      "};"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.match(matches[0]?.message ?? "", /Public env identifier/);
+});
+
+test("detects hardcoded GitHub token in Vite client entry", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "src/main.ts",
+    content: 'const token = "ghp_1234567890abcdef1234567890abcdef1234";'
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 1);
+});
+
+test("detects client-side JWT-like service_role token with Supabase proof", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "plugins/supabase.client.ts",
+    content: [
+      'const token = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.signature";',
+      'const provider = "supabase";'
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 1);
+});
+
+test("detects hardcoded Shopify admin token in Svelte component", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "src/routes/+page.svelte",
+    content: 'const token = "shpat_1234567890abcdef123456";'
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.line, 1);
+});
+
+test("does not flag client-side service role env reference without public prefix", () => {
   const matches = matchExposedSupabaseServiceRoleKey({
     relativePath: "app/admin/page.tsx",
     content: [
@@ -26,35 +87,37 @@ test("detects client-side service role env reference", () => {
     ].join("\n")
   });
 
-  assert.equal(matches.length, 1);
-  assert.equal(matches[0]?.line, 3);
+  assert.deepEqual(matches, []);
 });
 
-test("detects NEXT_PUBLIC service role misuse", () => {
+test("does not flag NEXT_PUBLIC_SUPABASE_URL", () => {
   const matches = matchExposedSupabaseServiceRoleKey({
-    relativePath: "src/components/admin-panel.tsx",
-    content: [
-      "export const adminConfig = {",
-      '  serviceRoleKey: process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY',
-      "};"
-    ].join("\n")
+    relativePath: "src/main.ts",
+    content: 'const url = process.env.NEXT_PUBLIC_SUPABASE_URL;'
   });
 
-  assert.equal(matches.length, 1);
-  assert.match(matches[0]?.message ?? "", /NEXT_PUBLIC/);
+  assert.deepEqual(matches, []);
 });
 
-test("detects client-side JWT-like service_role token", () => {
+test("does not flag VITE_PUBLIC_CLERK_PUBLISHABLE_KEY", () => {
   const matches = matchExposedSupabaseServiceRoleKey({
-    relativePath: "components/admin-token.tsx",
+    relativePath: "src/main.ts",
+    content: 'const key = process.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY;'
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not flag generic JWT without Supabase service_role proof", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "app/page.tsx",
     content: [
       '"use client";',
-      'const token = "eyJhbGciOiJIUzI1NiJ9.c2VydmljZV9yb2xl.signature";'
+      'const token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature";'
     ].join("\n")
   });
 
-  assert.equal(matches.length, 1);
-  assert.equal(matches[0]?.line, 2);
+  assert.deepEqual(matches, []);
 });
 
 test("does not flag safe server-only usage", () => {
