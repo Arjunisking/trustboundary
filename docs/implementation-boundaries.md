@@ -171,6 +171,7 @@ Must block only when all are proven in same policy statement:
   - `WITH CHECK (true)`
   - `WITH CHECK true`
   - required guard clause is absent
+- statement contains no `auth.uid()`, ownership check, JWT claim check, `current_setting`, `request.auth`, custom function, or other complex SQL evidence
 
 Statement forms that must block:
 - `FOR UPDATE TO public USING (true)`
@@ -178,10 +179,6 @@ Statement forms that must block:
 - `FOR DELETE TO public USING (true)`
 - `FOR ALL TO anon USING (true)`
 - `FOR ALL TO public` with missing `USING`
-- `FOR UPDATE TO public USING (auth.uid() = user_id) WITH CHECK true`
-  - reason: destructive public action plus literal-true write guard
-- `FOR UPDATE TO anon USING true WITH CHECK (owner_id = auth.uid())`
-  - reason: destructive public action plus literal-true read or target guard
 
 Missing guard rules for V1:
 - `FOR UPDATE`: missing `USING` or missing `WITH CHECK` must block
@@ -222,6 +219,8 @@ Must not block:
 - joins, subqueries, `exists`, `in`, `coalesce`, `case`, or other complex SQL
 - any non-literal boolean expression not equal to plain `true`
 - public `INSERT`
+- mixed statements such as `FOR UPDATE TO public USING (auth.uid() = user_id) WITH CHECK true`
+- mixed statements such as `FOR UPDATE TO anon USING true WITH CHECK (owner_id = auth.uid())`
 
 If statement is complex or safety cannot be proven absent, it must not block.
 
@@ -416,13 +415,14 @@ If any one element is missing or uncertain, it must not block.
 - SQL policy `FOR UPDATE TO public USING (true)`
 - SQL policy `FOR DELETE TO anon USING true`
 - SQL policy `FOR ALL TO public` with missing `USING`
-- SQL policy `FOR UPDATE TO public USING (owner_id = auth.uid()) WITH CHECK true`
 - Firebase rule `allow write: if true`
 - Firebase rule `allow update, delete: if true`
 
 ### TB002 must-pass fixtures
 - SQL public `INSERT`
 - SQL `FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)`
+- SQL `FOR UPDATE TO public USING (auth.uid() = user_id) WITH CHECK true`
+- SQL `FOR UPDATE TO anon USING true WITH CHECK (owner_id = auth.uid())`
 - SQL `FOR DELETE TO public USING (is_admin())`
 - SQL policy using `current_setting`
 - SQL policy using JWT claims or custom function
