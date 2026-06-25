@@ -29,23 +29,13 @@ test("@trustboundary/cli returns stable JSON output", async () => {
   const json = JSON.parse(formatJsonResult(result));
 
   assert.equal(json.targetPath, insecureFixture);
-  assert.equal(json.summary.confirmedCriticalCount, 6);
+  assert.equal(json.summary.totalFindings, 1);
+  assert.equal(json.summary.confirmedCriticalCount, 1);
   assert.equal(json.hasBlockingFindings, true);
   assert.equal(json.enforcementEnabled, false);
   assert.equal(json.exitCode, 0);
+  assert.equal(json.findings.length, 1);
   assert.equal(json.findings[0].ruleId, "TB001");
-  assert.equal(
-    json.findings.some((finding) => finding.ruleId === "unsafe-mutation"),
-    true
-  );
-  assert.equal(
-    json.findings.some((finding) => finding.ruleId === "rls-failures"),
-    true
-  );
-  assert.equal(
-    json.findings.some((finding) => finding.ruleId === "webhook-and-agent-abuse"),
-    true
-  );
   assert.equal(json.findings[0].severity, "critical");
   assert.equal(json.findings[0].confidence, "confirmed");
 });
@@ -65,12 +55,13 @@ test("@trustboundary/cli writes escaped HTML report", async () => {
   const html = await readFile(reportPath, "utf8");
 
   assert.equal(result.reportPath, reportPath);
-  assert.match(html, /TrustBoundary findings: 16/);
+  assert.match(html, /TrustBoundary findings: 1/);
   assert.match(html, /app\/admin\/page\.tsx/);
-  assert.match(html, /broken-authorization/);
-  assert.match(html, /rls-failures/);
-  assert.match(html, /unsafe-mutation/);
-  assert.match(html, /webhook-and-agent-abuse/);
+  assert.match(html, /TB001/);
+  assert.equal(html.includes("unsafe-mutation"), false);
+  assert.equal(html.includes("broken-authorization"), false);
+  assert.equal(html.includes("rls-failures"), false);
+  assert.equal(html.includes("webhook-and-agent-abuse"), false);
 });
 
 test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mode", async () => {

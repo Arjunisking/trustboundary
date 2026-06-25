@@ -53,8 +53,8 @@ test("@trustboundary/action fails for Confirmed Critical findings", async () => 
   assert.equal(result.blocked, true);
   assert.equal(result.exitCode, 1);
   assert.equal(result.enforcementEnabled, true);
-  assert.equal(result.summary.confirmedCriticalCount, 6);
-  assert.match(formatActionSummary(result), /Confirmed Critical findings: 6/);
+  assert.equal(result.summary.confirmedCriticalCount, 1);
+  assert.match(formatActionSummary(result), /Confirmed Critical findings: 1/);
 });
 
 test("@trustboundary/action passes for clean scans", async () => {
@@ -88,7 +88,7 @@ test("@trustboundary/action can disable enforcement", async () => {
   assert.equal(result.exitCode, 0);
 });
 
-test("@trustboundary/action does not block on unsafe-mutation likely findings", async () => {
+test("@trustboundary/action ignores dormant legacy likely rules in TB001-only mode", async () => {
   const unsafeOnlyDir = await mkdtemp(path.join(os.tmpdir(), "trustboundary-action-unsafe-"));
   await writeFile(
     path.join(unsafeOnlyDir, "route.ts"),
@@ -105,11 +105,9 @@ test("@trustboundary/action does not block on unsafe-mutation likely findings", 
     enforce: true
   });
 
-  assert.equal(result.summary.totalFindings, 1);
+  assert.equal(result.summary.totalFindings, 0);
   assert.equal(result.summary.confirmedCriticalCount, 0);
-  assert.equal(result.findings[0]?.ruleId, "unsafe-mutation");
-  assert.equal(result.findings[0]?.severity, "high");
-  assert.equal(result.findings[0]?.confidence, "likely");
+  assert.deepEqual(result.findings, []);
   assert.equal(result.blocked, false);
   assert.equal(result.exitCode, 0);
   assert.match(formatActionSummary(result), /No Confirmed Critical issues found\./);
@@ -127,8 +125,8 @@ test("@trustboundary/action writes declared outputs", async () => {
   await writeActionOutputs(createActionOutputs(result), outputFile);
   const outputContents = await readFile(outputFile, "utf8");
 
-  assert.match(outputContents, /^total_findings=16/m);
-  assert.match(outputContents, /^confirmed_critical_count=6/m);
+  assert.match(outputContents, /^total_findings=1/m);
+  assert.match(outputContents, /^confirmed_critical_count=1/m);
   assert.match(outputContents, /^blocked=true/m);
   assert.match(outputContents, /^report_path=.*report\.html/m);
 });

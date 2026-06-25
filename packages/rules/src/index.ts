@@ -1,14 +1,15 @@
 import ts from "typescript";
 
 export const RULE_IDS = [
-  "TB001",
-  "unsafe-mutation",
-  "broken-authorization",
-  "rls-failures",
-  "webhook-and-agent-abuse"
+  "TB001"
 ] as const;
 
-export type RuleId = (typeof RULE_IDS)[number];
+export type RuleId =
+  | (typeof RULE_IDS)[number]
+  | "unsafe-mutation"
+  | "broken-authorization"
+  | "rls-failures"
+  | "webhook-and-agent-abuse";
 export type RuleSeverity = "critical" | "high" | "medium" | "low" | "info";
 export type RuleConfidence = "confirmed" | "likely" | "unverified";
 
@@ -1680,9 +1681,5 @@ export const WEBHOOK_AND_AGENT_ABUSE_RULE: ScannerRuleDefinition = {
 };
 
 export const SCANNER_RULES: ScannerRuleDefinition[] = [
-  EXPOSED_SUPABASE_SERVICE_ROLE_RULE,
-  UNSAFE_MUTATION_RULE,
-  BROKEN_AUTHORIZATION_RULE,
-  RLS_FAILURES_RULE,
-  WEBHOOK_AND_AGENT_ABUSE_RULE
+  EXPOSED_SUPABASE_SERVICE_ROLE_RULE
 ];

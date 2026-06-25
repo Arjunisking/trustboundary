@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   RULE_IDS,
+  SCANNER_RULES,
   matchBrokenAuthorization,
   matchExposedSupabaseServiceRoleKey,
   matchRlsFailures,
@@ -10,10 +11,12 @@ import {
   matchUnsafeMutation
 } from "../dist/index.js";
 
-test("@trustboundary/rules exports V1 rule ids", () => {
-  assert.equal(RULE_IDS.length, 5);
-  assert.equal(RULE_IDS[0], "TB001");
-  assert.equal(RULE_IDS[1], "unsafe-mutation");
+test("@trustboundary/rules exports TB001 as the only active V1 automated rule", () => {
+  assert.deepEqual(RULE_IDS, ["TB001"]);
+  assert.equal(SCANNER_RULES.length, 1);
+  assert.equal(SCANNER_RULES[0]?.ruleId, "TB001");
+  assert.equal(SCANNER_RULES[0]?.severity, "critical");
+  assert.equal(SCANNER_RULES[0]?.confidence, "confirmed");
 });
 
 test("detects hardcoded Stripe live secret in browser-exposed Next.js page", () => {
