@@ -36,10 +36,9 @@ test("@trustboundary/core walks fixture files as untrusted text", async () => {
   ]);
 });
 
-test("@trustboundary/core detects only TB001 in normal V1 automated scans", async () => {
+test("@trustboundary/core detects only TB001 and TB002 in normal V1 automated scans", async () => {
   const findings = await scanRepository(fixtureRoot);
 
-  assert.equal(findings.length, 1);
   assert.deepEqual(findings, [
     {
       id: "TB001:app/admin/page.tsx:3",
@@ -53,11 +52,24 @@ test("@trustboundary/core detects only TB001 in normal V1 automated scans", asyn
         "Anyone can extract the secret from browser-delivered code and use privileged access outside intended server-side controls.",
       patch:
         "Move the secret to server-only code or a secret manager. Do not expose service, private, admin, token, or server keys to browser bundles; use publishable or anon keys instead."
+    },
+    {
+      id: "TB002:firestore.rules:5",
+      ruleId: "TB002",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "firestore.rules",
+      line: 5,
+      message: "Firebase rule allows destructive public writes with literal true.",
+      exploitPath:
+        "An unauthenticated user can modify or delete data because the committed policy text grants destructive public access with a missing or ineffective guard.",
+      patch:
+        "Restrict destructive public access with explicit auth, ownership, tenant, or provider checks. Do not use literal true guards for UPDATE, DELETE, ALL, or public write rules."
     }
   ]);
 });
 
-test("@trustboundary/core does not flag server-only files or dormant non-TB001 fixture cases", async () => {
+test("@trustboundary/core keeps dormant fixtures non-blocking outside TB001 and TB002 boundaries", async () => {
   const findings = await scanRepository(fixtureRoot);
 
   assert.equal(
@@ -82,6 +94,14 @@ test("@trustboundary/core does not flag server-only files or dormant non-TB001 f
   );
   assert.equal(
     findings.some((finding) => finding.file === "app/api/health/route.ts"),
+    false
+  );
+  assert.equal(
+    findings.some((finding) => finding.file === "supabase/migrations/202606190001_public_profiles.sql"),
+    false
+  );
+  assert.equal(
+    findings.some((finding) => finding.file === "supabase/migrations/202606190002_public_orders_insert.sql"),
     false
   );
   assert.equal(

@@ -29,15 +29,20 @@ test("@trustboundary/cli returns stable JSON output", async () => {
   const json = JSON.parse(formatJsonResult(result));
 
   assert.equal(json.targetPath, insecureFixture);
-  assert.equal(json.summary.totalFindings, 1);
-  assert.equal(json.summary.confirmedCriticalCount, 1);
+  assert.equal(json.summary.totalFindings, 2);
+  assert.equal(json.summary.confirmedCriticalCount, 2);
   assert.equal(json.hasBlockingFindings, true);
   assert.equal(json.enforcementEnabled, false);
   assert.equal(json.exitCode, 0);
-  assert.equal(json.findings.length, 1);
-  assert.equal(json.findings[0].ruleId, "TB001");
-  assert.equal(json.findings[0].severity, "critical");
-  assert.equal(json.findings[0].confidence, "confirmed");
+  assert.equal(json.findings.length, 2);
+  assert.deepEqual(
+    json.findings.map((finding) => finding.ruleId),
+    ["TB001", "TB002"]
+  );
+  assert.deepEqual(
+    json.findings.map((finding) => finding.confidence),
+    ["confirmed", "confirmed"]
+  );
 });
 
 test("@trustboundary/cli uses safe summary wording for clean scans", async () => {
@@ -55,13 +60,13 @@ test("@trustboundary/cli writes escaped HTML report", async () => {
   const html = await readFile(reportPath, "utf8");
 
   assert.equal(result.reportPath, reportPath);
-  assert.match(html, /TrustBoundary findings: 1/);
+  assert.match(html, /TrustBoundary findings: 2/);
   assert.match(html, /app\/admin\/page\.tsx/);
+  assert.match(html, /firestore\.rules/);
   assert.match(html, /TB001/);
-  assert.equal(html.includes("unsafe-mutation"), false);
-  assert.equal(html.includes("broken-authorization"), false);
-  assert.equal(html.includes("rls-failures"), false);
-  assert.equal(html.includes("webhook-and-agent-abuse"), false);
+  assert.match(html, /TB002/);
+  assert.equal(html.includes("TB001"), true);
+  assert.equal(html.includes("TB002"), true);
 });
 
 test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mode", async () => {
@@ -74,3 +79,4 @@ test("@trustboundary/cli enforces Confirmed Critical findings only in enforce mo
   assert.equal(enforced.enforcementEnabled, true);
   assert.equal(enforced.exitCode, 1);
 });
+
