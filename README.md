@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://git.io/typing-svg">
     <img
-      src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=24&duration=3000&pause=700&color=FF0000&center=true&vCenter=true&width=850&lines=TrustBoundary;Pre-deploy+security+scanner+for+AI-generated+apps;Blocks+confirmed+critical+issues+before+production"
+      src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=24&duration=2800&pause=900&color=00D084&center=true&vCenter=true&width=900&lines=TrustBoundary;Deterministic+security+scanner+for+AI-generated+apps;Finds+confirmed+critical+issues+before+deploy;No+LLM+guesswork.+No+false+confidence."
       alt="Typing SVG"
     />
   </a>
