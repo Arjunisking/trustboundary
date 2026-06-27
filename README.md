@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://git.io/typing-svg">
     <img
-      src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=24&duration=2800&pause=900&color=00D084&center=true&vCenter=true&width=900&lines=TrustBoundary;Deterministic+security+scanner+for+AI-generated+apps;Finds+confirmed+critical+issues+before+deploy;No+LLM+guesswork.+No+false+confidence."
+      src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=24&duration=2800&pause=900&color=00D084&center=true&vCenter=true&width=900&lines=TrustBoundary;Deterministic+pre-deploy+security+scanner;Blocks+confirmed+critical+AI-generated+app+mistakes;No+LLM+guesswork.+No+false+confidence."
       alt="Typing SVG"
     />
   </a>
@@ -11,123 +11,126 @@
 
 Deterministic pre-deploy security scanner for AI-generated web apps.
 
-TrustBoundary scans committed repository text for high-signal security mistakes common in fast AI-built apps. It does not execute scanned project code, does not import scanned files, and treats all scanned content as untrusted input.
+TrustBoundary scans committed repository evidence for a small set of high-confidence security mistakes common in fast AI-built apps. It is designed to run before deployment, especially in GitHub Actions.
 
-## Release Model
+It does not execute scanned project code.
+It does not import scanned project files.
+It does not use LLM judgment for findings.
+It does not claim your app is secure.
 
-TrustBoundary V1 is a repository and GitHub Action release.
-
-- Workspace packages remain `private: true`
-- V1 is not configured for npm publishing yet
-- Future npm publishing would require public package metadata, publish configuration, and a supported distribution strategy for the CLI and action
-
-## V1 Rules
-
-| Rule | What it detects | Typical severity/confidence |
-| --- | --- | --- |
-| `exposed-secrets` | Supabase service role keys or service-role JWTs exposed to client-side code | `critical/confirmed` |
-| `unsafe-mutation` | Request body flowing directly into database mutations without visible validation or allowlisting | `high/likely` |
-| `broken-authorization` | Sensitive API routes or server actions that reach DB reads/writes without visible auth or ownership checks | `high/confirmed` or `high/likely` |
-| `rls-failures` | Supabase SQL policies or Firebase rules that visibly allow broad public read/write access | `critical/confirmed`, sometimes `high/likely` |
-| `webhook-and-agent-abuse` | Webhook routes that process payloads and reach sensitive sinks without visible signature verification | `critical/confirmed` or `high/likely` |
-
-## Gating
-
-- Blocking behavior today: `critical/confirmed` only
-- CLI with `--enforce` exits `1` only when Confirmed Critical findings exist
-- GitHub Action fails only when Confirmed Critical findings exist and `enforce` is enabled
-- `high/confirmed`, `high/likely`, and `unverified` findings are warning-only by default
-- Clean blocking status wording is always `No Confirmed Critical issues found.`
-
-## Install
-
-Install workspace dependencies:
-
-```bash
-pnpm install
-```
-
-Build local packages before first CLI use:
-
-```bash
-pnpm build
-```
-
-## CLI
-
-Human summary scan:
-
-```bash
-pnpm trustboundary scan examples/insecure-next-supabase
-```
-
-JSON output:
-
-```bash
-pnpm trustboundary scan examples/insecure-next-supabase --json
-```
-
-HTML report:
-
-```bash
-pnpm trustboundary scan examples/insecure-next-supabase --report trustboundary-report.html
-```
-
-Enforced exit code:
-
-```bash
-pnpm trustboundary scan examples/insecure-next-supabase --enforce
-```
-
-CLI usage:
+Clean result wording is:
 
 ```text
-trustboundary scan <target-directory> [--json] [--report <file>] [--enforce]
+No Confirmed Critical issues found.
 ```
 
-## JSON Output
+## Current Release
 
-Top-level JSON fields:
+Latest V1 release:
 
-- `targetPath`: absolute or resolved scan target path
-- `summary.totalFindings`: total findings returned by current rules
-- `summary.confirmedCriticalCount`: findings that currently block by default
-- `summary.blocking`: summary-level blocking status based on Confirmed Critical findings only
-- `hasBlockingFindings`: top-level alias of `summary.blocking`
-- `enforcementEnabled`: whether `--enforce` was used
-- `exitCode`: actual CLI exit behavior
-- `findings`: individual findings with `ruleId`, `severity`, `confidence`, `file`, `line`, `message`, `exploitPath`, and `patch`
-
-Example shape:
-
-```json
-{
-  "targetPath": "/repo/examples/insecure-next-supabase",
-  "summary": {
-    "totalFindings": 16,
-    "confirmedCriticalCount": 6,
-    "blocking": true,
-    "statusMessage": "Confirmed Critical findings: 6"
-  },
-  "hasBlockingFindings": true,
-  "enforcementEnabled": false,
-  "exitCode": 0,
-  "findings": []
-}
+```text
+v1.1.0
 ```
 
-This separation avoids confusion when blocking findings exist but enforcement is off.
+Public GitHub Action usage:
 
-## HTML Report
+```yaml
+uses: Arjunisking/trustboundary@v1
+```
 
-- Generates one self-contained HTML file
-- Escapes untrusted file paths, messages, exploit paths, patches, and target paths
-- Reports deterministic repository evidence only
-- Does not claim the repository is secure or fully assessed
+For immutable pinning:
 
-## GitHub Action
+```yaml
+uses: Arjunisking/trustboundary@v1.1.0
+```
 
-Public release usage after tagging this repository:
+`v1` is the floating major tag. `v1.1.0` is the immutable release tag.
+
+## V1 Active Automated Blockers
+
+TrustBoundary V1 currently enforces exactly three blocking rules:
+
+| Rule ID | Rule                              | What it detects                                                                                                                  | Severity   | Confidence  |
+| ------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
+| `TB001` | Client-Side Secret Exposure       | Hardcoded or publicly exposed secrets in browser-delivered code                                                                  | `critical` | `confirmed` |
+| `TB002` | Destructive Public RLS / DB Rules | Supabase/Postgres/Firebase policy text that allows destructive public writes or deletes                                          | `critical` | `confirmed` |
+| `TB003` | Unsigned Known Provider Webhook   | Known provider webhook routes that read payloads and reach dangerous sinks without deterministic signature verification evidence | `critical` | `confirmed` |
+
+V1 active automated enforcement is intentionally narrow.
+
+TrustBoundary does not currently enforce:
+
+* `TB004`
+* advisory rules
+* broad authentication scanning
+* unsafe mutation scanning
+* broken authorization scanning
+* broad webhook or AI-agent abuse scanning
+
+Those categories may exist in older planning docs or historical prototypes, but they are not active V1 automated blockers.
+
+## Rule Boundaries
+
+### TB001 Client-Side Secret Exposure
+
+TB001 blocks when committed evidence shows secrets exposed to client-side code.
+
+Examples of risky evidence:
+
+* hardcoded Stripe live secret keys in browser-exposed files
+* public env exposure such as `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY`
+* hardcoded Supabase service role JWT-like values with Supabase/service role proof
+* hardcoded GitHub, Shopify, or Clerk secret-shaped values in browser-exposed code when safely detectable
+
+TB001 does not block when client exposure cannot be proven.
+
+### TB002 Destructive Public RLS / DB Rules
+
+TB002 blocks narrow, deterministic database policy failures.
+
+Examples of risky evidence:
+
+* `FOR UPDATE TO public USING (true)`
+* `FOR DELETE TO anon USING true`
+* `FOR ALL TO public` with missing guard clauses
+* Firebase rules like `allow write: if true`
+* Firebase rules like `allow update, delete: if true`
+
+TB002 does not block complex policy logic, ownership checks, custom functions, `auth.uid()`, `request.auth`, JWT claims, or public insert-only rules.
+
+### TB003 Unsigned Known Provider Webhook
+
+TB003 blocks only supported known provider webhook routes when all required evidence is present.
+
+Supported V1 providers:
+
+* Stripe
+* Clerk
+* Shopify
+* GitHub
+
+To block, TB003 must prove all of these in the same committed route evidence:
+
+1. known provider webhook route
+2. payload read
+3. dangerous sink
+4. no same-file provider verification marker
+5. no clearly named local relative verification helper import
+
+Examples of verification evidence that can suppress TB003:
+
+* `stripe.webhooks.constructEvent(...)`
+* `stripe-signature` with crypto verification
+* Clerk/Svix `Webhook(...).verify(...)`
+* Shopify `x-shopify-hmac-sha256` with HMAC verification
+* GitHub `x-hub-signature-256` with HMAC and timing-safe comparison
+* local helper imports such as `verifyWebhook`, `verifySignature`, `validateHmac`, or `constructEvent`
+
+Unsupported providers and ambiguous webhook routes pass by design.
+
+## GitHub Action Usage
+
+Create `.github/workflows/trustboundary.yml`:
 
 ```yaml
 name: TrustBoundary
@@ -136,6 +139,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   trustboundary:
@@ -161,74 +165,277 @@ jobs:
 
 Action behavior:
 
-- installs TrustBoundary dependencies inside the action repository
-- builds TrustBoundary inside the action repository
-- scans the checked-out target repository text only
-- passes when no Confirmed Critical findings exist
-- fails only when Confirmed Critical findings exist and enforcement is enabled
-- does not require the target repository to run `pnpm install` or `pnpm build`
+* scans the checked-out repository text
+* treats scanned files as untrusted input
+* does not run target repository install/build scripts
+* passes when no Confirmed Critical findings exist
+* fails only when Confirmed Critical findings exist and `enforce` is enabled
+* emits declared outputs for CI usage
+* can write a static HTML report
 
 Action inputs:
 
-- `target_path`: repository path to scan, default `.`
-- `enforce`: default `"true"`
-- `report_path`: optional HTML report path inside workspace
+| Input         | Default  | Description                                         |
+| ------------- | -------- | --------------------------------------------------- |
+| `target_path` | `.`      | Repository path to scan                             |
+| `enforce`     | `"true"` | Whether Confirmed Critical findings fail the action |
+| `report_path` | empty    | Optional HTML report output path                    |
 
 Action outputs:
 
-- `total_findings`
-- `confirmed_critical_count`
-- `blocked`
-- `report_path`
+| Output                     | Description                                    |
+| -------------------------- | ---------------------------------------------- |
+| `total_findings`           | Total findings returned by active rules        |
+| `confirmed_critical_count` | Number of blocking Confirmed Critical findings |
+| `blocked`                  | `true` when enforcement should fail            |
+| `report_path`              | HTML report path when configured               |
 
-## Release Tagging
+## Local Development
 
-Release tags for public action use:
+TrustBoundary is a TypeScript monorepo.
 
-- Create immutable release tag `v1.0.0`
-- Create or update major tag `v1` to point at same commit as `v1.0.0`
-- Test from a clean external repository with `uses: Arjunisking/trustboundary@v1`
+Package layout:
 
-Example commands:
+```text
+packages/core    scanner orchestration and file walking
+packages/rules   deterministic embedded rules
+packages/cli     local CLI wrapper
+packages/action  GitHub Action wrapper and bundled runtime
+packages/report  static HTML report generation
+```
+
+Install dependencies:
 
 ```bash
-git tag -a v1.0.0 -m "TrustBoundary v1.0.0"
-git tag -fa v1 -m "TrustBoundary v1"
-git push origin v1.0.0
-git push origin refs/tags/v1 --force
+pnpm install
+```
+
+Build packages:
+
+```bash
+pnpm build
+```
+
+Run tests:
+
+```bash
+pnpm test
+```
+
+Run typecheck:
+
+```bash
+pnpm typecheck
+```
+
+## CLI Usage
+
+The local CLI is intended for repository development and manual scans.
+
+Human-readable scan:
+
+```bash
+pnpm trustboundary scan examples/insecure-next-supabase
+```
+
+JSON output:
+
+```bash
+pnpm trustboundary scan examples/insecure-next-supabase --json
+```
+
+HTML report:
+
+```bash
+pnpm trustboundary scan examples/insecure-next-supabase --report trustboundary-report.html
+```
+
+Enforced exit code:
+
+```bash
+pnpm trustboundary scan examples/insecure-next-supabase --enforce
+```
+
+CLI shape:
+
+```text
+trustboundary scan <target-directory> [--json] [--report <file>] [--enforce]
+```
+
+## JSON Output
+
+Top-level JSON fields:
+
+* `targetPath`
+* `summary.totalFindings`
+* `summary.confirmedCriticalCount`
+* `summary.blocking`
+* `summary.statusMessage`
+* `hasBlockingFindings`
+* `enforcementEnabled`
+* `exitCode`
+* `findings`
+
+Finding fields include:
+
+* `ruleId`
+* `severity`
+* `confidence`
+* `file`
+* `line`
+* `message`
+* `exploitPath`
+* `patch`
+
+Example shape:
+
+```json
+{
+  "targetPath": "/repo",
+  "summary": {
+    "totalFindings": 1,
+    "confirmedCriticalCount": 1,
+    "blocking": true,
+    "statusMessage": "Confirmed Critical findings: 1"
+  },
+  "hasBlockingFindings": true,
+  "enforcementEnabled": true,
+  "exitCode": 1,
+  "findings": [
+    {
+      "ruleId": "TB003",
+      "severity": "critical",
+      "confidence": "confirmed",
+      "file": "app/api/webhooks/stripe/route.ts",
+      "line": 2,
+      "message": "Stripe webhook route reads payload and reaches a dangerous sink without deterministic signature verification evidence."
+    }
+  ]
+}
+```
+
+This separation avoids confusion when blocking findings exist but enforcement is off.
+
+## HTML Report
+
+TrustBoundary can generate a static HTML report.
+
+Report behavior:
+
+* generates one self-contained HTML file
+* escapes untrusted file paths, messages, exploit paths, patches, and target paths
+* reports deterministic repository evidence only
+* does not claim the repository is secure
+* uses safe clean-scan wording
+
+Clean report status:
+
+```text
+No Confirmed Critical issues found.
 ```
 
 ## Example Fixture
 
-`examples/insecure-next-supabase` is intentionally unsafe. It includes API routes, webhook handlers, Supabase SQL policies, and Firebase rules that exercise all 5 V1 rules. See [examples/insecure-next-supabase/README.md](examples/insecure-next-supabase/README.md).
+`examples/insecure-next-supabase` is intentionally unsafe.
 
-## V1 Scope
+It exists to exercise TrustBoundary's active V1 blockers:
 
-TrustBoundary V1 focuses on 5 AI-generated security patterns:
+* TB001 client-side secret exposure
+* TB002 destructive public RLS / DB rules
+* TB003 unsigned known provider webhook
 
-1. Exposed secrets
-2. Unsafe mutations
-3. Broken authorization
-4. Supabase/Firebase rule failures
-5. Webhook and AI-agent abuse
+Do not copy fixture code into production apps.
 
-## Commands
+## Release Verification
+
+The `v1.1.0` release was verified with:
+
+* local rule/core/CLI/action tests
+* full workspace tests
+* typecheck
+* build
+* external red test using unsigned Stripe webhook
+* external green test using signed Stripe webhook
+* immutable `v1.1.0` GitHub Action smoke test
+* floating `v1` GitHub Action smoke test
+
+## Release Process
+
+For future releases:
+
+1. Run local verification.
 
 ```bash
-pnpm install
-pnpm typecheck
+pnpm --filter @trustboundary/rules test
+pnpm --filter @trustboundary/core test
+pnpm --filter @trustboundary/cli test
+pnpm --filter @trustboundary/action test
 pnpm test
+pnpm typecheck
 pnpm build
 ```
 
-## Philosophy
+2. Create immutable version tag.
 
-- Evidence over assumptions
-- Fixes over lectures
-- Block Confirmed Critical only by default
-- Warn on Likely and Unverified
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+3. Test from an external repository using the immutable tag.
+
+```yaml
+uses: Arjunisking/trustboundary@vX.Y.Z
+```
+
+4. Move floating major tag only after the immutable tag passes external smoke tests.
+
+```bash
+git tag -fa v1 -m "Move v1 to vX.Y.Z"
+git push origin refs/tags/v1 --force
+```
+
+5. Test again from an external repository using:
+
+```yaml
+uses: Arjunisking/trustboundary@v1
+```
+
+## Design Principles
+
+* Deterministic evidence over assumptions
+* Confirmed Critical only for blocking
+* False negatives over false positives
+* No scanned-code execution
+* No imported scanned files
+* No LLM judgment for findings
+* No full-security claims
+* Clear exploit path and patch guidance
+* Small V1 scope that developers can trust
+
+## Known Limitations
+
+TrustBoundary V1 is intentionally narrow.
+
+It may miss:
+
+* unsupported webhook providers
+* custom verification patterns
+* unusual route layouts
+* cross-file dataflow
+* runtime-only configuration issues
+* broader authorization flaws
+* general input validation bugs
+* non-committed secrets or deployment misconfiguration
+
+A clean TrustBoundary scan means only:
+
+```text
+No Confirmed Critical issues found.
+```
+
+It does not mean the application is secure.
 
 ## License
 
 MIT
-
