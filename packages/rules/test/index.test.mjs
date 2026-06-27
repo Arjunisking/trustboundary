@@ -8,8 +8,14 @@ import {
   matchExposedSupabaseServiceRoleKey
 } from "../dist/index.js";
 
-test("@trustboundary/rules exports TB001 and TB002 as the only active V1 automated rules", () => {
-  assert.deepEqual(RULE_IDS, ["TB001", "TB002"]);
+function matchRule(ruleId, file) {
+  const rule = SCANNER_RULES.find((candidate) => candidate.ruleId === ruleId);
+  assert.ok(rule, `Expected active rule ${ruleId}`);
+  return rule.matchFile(file);
+}
+
+test("@trustboundary/rules exports TB001, TB002, and TB003 as the only active V1 automated rules", () => {
+  assert.deepEqual(RULE_IDS, ["TB001", "TB002", "TB003"]);
   assert.deepEqual(
     SCANNER_RULES.map((rule) => ({
       ruleId: rule.ruleId,
@@ -24,6 +30,11 @@ test("@trustboundary/rules exports TB001 and TB002 as the only active V1 automat
       },
       {
         ruleId: "TB002",
+        severity: "critical",
+        confidence: "confirmed"
+      },
+      {
+        ruleId: "TB003",
         severity: "critical",
         confidence: "confirmed"
       }
@@ -319,7 +330,7 @@ test("does not block SQL-like text outside policy target files", () => {
   const matches = matchDestructivePublicDbRules({
     relativePath: "app/api/debug/route.ts",
     content: [
-      "const sql = `create policy demo on public.profiles for update to public using (true);`;",
+      "const sql = `create policy demo on public.profiles for update to public using (true);` ;",
       "export async function GET() {",
       "  return Response.json({ sql });",
       "}"
@@ -327,4 +338,273 @@ test("does not block SQL-like text outside policy target files", () => {
   });
 
   assert.deepEqual(matches, []);
+});
+
+test("blocks unsigned Stripe webhook route that reads payload and writes to the database", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/webhooks/stripe/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.text();",
+      "  await prisma.event.create({ data: { payload: body } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("blocks unsigned Shopify webhook route that processes payload and mutates billing state", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "src/app/api/webhooks/shopify/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await billingAccount.update({ data: payload });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("blocks unsigned Clerk webhook route that reads payload and dispatches a job", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "pages/api/webhooks/clerk.ts",
+    content: [
+      "export default async function handler(req, res) {",
+      "  const body = req.body;",
+      "  await userSyncQueue.add('clerk-sync', body);",
+      "  res.status(200).json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("blocks unsigned GitHub webhook route that reads payload and calls an external API", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "pages/api/webhooks/github.ts",
+    content: [
+      "export default async function handler(req, res) {",
+      "  const payload = req.body;",
+      '  await fetch("https://api.example.com/sync", { method: "POST", body: JSON.stringify(payload) });',
+      "  res.status(200).json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("blocks known provider webhook route with dangerous sink and no signature checks", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "pages/api/stripe/webhook.ts",
+    content: [
+      "export default async function handler(req, res) {",
+      "  const body = req.body;",
+      "  await customerAccount.update({ data: body });",
+      "  res.status(200).json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, "critical");
+  assert.equal(matches[0]?.confidence, "confirmed");
+});
+
+test("does not block Stripe webhook route using constructEvent verification", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/webhooks/stripe/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const body = await request.text();",
+      '  const signature = request.headers.get("stripe-signature");',
+      "  const event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET);",
+      "  await prisma.event.create({ data: { id: event.id } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block Shopify webhook route checking x-shopify-hmac-sha256", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "src/app/api/webhooks/shopify/route.ts",
+    content: [
+      "import { createHmac, timingSafeEqual } from 'node:crypto';",
+      "export async function POST(request: Request) {",
+      "  const body = await request.text();",
+      '  const signature = request.headers.get("x-shopify-hmac-sha256");',
+      "  const digest = createHmac('sha256', process.env.SHOPIFY_WEBHOOK_SECRET).update(body).digest();",
+      "  timingSafeEqual(digest, Buffer.from(signature ?? '', 'base64'));",
+      "  await billingAccount.update({ data: { body } });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block Clerk webhook route using Svix verification", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "pages/api/webhooks/clerk.ts",
+    content: [
+      "import { Webhook } from 'svix';",
+      "export default async function handler(req, res) {",
+      "  const payload = JSON.stringify(req.body);",
+      "  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET);",
+      "  wh.verify(payload, {",
+      '    "svix-id": req.headers["svix-id"],',
+      '    "svix-timestamp": req.headers["svix-timestamp"],',
+      '    "svix-signature": req.headers["svix-signature"]',
+      "  });",
+      "  await userSyncQueue.add('clerk-sync', payload);",
+      "  res.status(200).json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block GitHub webhook route checking x-hub-signature-256", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "pages/api/webhooks/github.ts",
+    content: [
+      "import { createHmac, timingSafeEqual } from 'node:crypto';",
+      "export default async function handler(req, res) {",
+      "  const body = JSON.stringify(req.body);",
+      '  const signature = req.headers["x-hub-signature-256"];',
+      "  const expected = createHmac('sha256', process.env.GITHUB_WEBHOOK_SECRET).update(body).digest('hex');",
+      "  timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature ?? '')));",
+      '  await fetch("https://api.example.com/sync", { method: "POST", body });',
+      "  res.status(200).json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block non-webhook API route", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/orders/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await prisma.order.create({ data: payload });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block custom webhook route for unsupported provider", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/webhooks/resend/route.ts",
+    content: [
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await emailJobQueue.enqueue(payload);",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block GET-only webhook-looking route", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/webhooks/stripe/route.ts",
+    content: [
+      "export async function GET() {",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block provider name in comment only", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/webhooks/orders/route.ts",
+    content: [
+      "// stripe webhook handler will be added later",
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await prisma.event.create({ data: payload });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block provider SDK import without webhook route evidence", () => {
+  const matches = matchRule("TB003", {
+    relativePath: "app/api/orders/route.ts",
+    content: [
+      "import Stripe from 'stripe';",
+      "const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);",
+      "export async function POST(request: Request) {",
+      "  const payload = await request.json();",
+      "  await prisma.order.create({ data: payload });",
+      "  return Response.json({ ok: true });",
+      "}"
+    ].join("\n")
+  });
+
+  assert.deepEqual(matches, []);
+});
+
+test("does not block SQL and Firebase files under TB003 matcher", () => {
+  assert.deepEqual(
+    matchRule("TB003", {
+      relativePath: "supabase/migrations/202606260001_public_profiles_update.sql",
+      content: "create policy demo on public.profiles for update to public using (true);"
+    }),
+    []
+  );
+  assert.deepEqual(
+    matchRule("TB003", {
+      relativePath: "firestore.rules",
+      content: "allow write: if true;"
+    }),
+    []
+  );
+});
+
+test("TB001 matching remains unchanged alongside TB003 coverage", () => {
+  const matches = matchExposedSupabaseServiceRoleKey({
+    relativePath: "app/page.tsx",
+    content: [
+      '"use client";',
+      'const secret = "sk_live_1234567890abcdef123456";'
+    ].join("\n")
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.severity, undefined);
+  assert.equal(matches[0]?.confidence, undefined);
 });
