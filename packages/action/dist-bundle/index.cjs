@@ -38,6 +38,9 @@ var TB001_PATCH = "Move the secret to server-only code or a secret manager. Do n
 var TB002_RULE_ID = "TB002";
 var TB002_EXPLOIT_PATH = "An unauthenticated user can modify or delete data because the committed policy text grants destructive public access with a missing or ineffective guard.";
 var TB002_PATCH = "Restrict destructive public access with explicit auth, ownership, tenant, or provider checks. Do not use literal true guards for UPDATE, DELETE, ALL, or public write rules.";
+var TB003_RULE_ID = "TB003";
+var TB003_EXPLOIT_PATH = "An attacker can forge a provider webhook event and trigger state changes because the route processes webhook payloads without deterministic signature verification evidence.";
+var TB003_PATCH = "Verify the provider signature in the same route or through a clearly named local verification helper before mutating data, calling external APIs, or dispatching jobs.";
 var NEXT_APP_CLIENT_ENTRY_PATH_PATTERNS = [
   /^(?:src\/)?app\/(?:.+\/)?(?:page|layout)\.[cm]?[jt]sx?$/
 ];
@@ -67,6 +70,12 @@ var FIREBASE_RULE_TARGET_PATH_PATTERNS = [
   /(^|\/)firestore\.rules$/,
   /(^|\/)storage\.rules$/
 ];
+var TB003_SUPPORTED_ROUTE_PATH_PATTERNS = [
+  /^(?:src\/)?app\/api\/.+\/route\.[cm]?[jt]sx?$/,
+  /^(?:src\/)?pages\/api\/.+\.[cm]?[jt]sx?$/,
+  /^src\/routes\/api\/.+\/\+server\.[cm]?[jt]s$/,
+  /^server\/api\/.+\.[cm]?[jt]sx?$/
+];
 var PUBLIC_ENV_RISKY_IDENTIFIER = /\b(?:NEXT_PUBLIC_|VITE_|PUBLIC_)[A-Z0-9_]*(?:SERVICE_ROLE|SECRET|PRIVATE|ADMIN|TOKEN|API_KEY|SERVER)[A-Z0-9_]*\b/;
 var JWT_LIKE_TOKEN = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/;
 var SUPABASE_SERVICE_ROLE_PROOF = /(service_role|SUPABASE_SERVICE_ROLE|supabase|c2VydmljZV9yb2xl)/i;
@@ -76,6 +85,38 @@ var SHOPIFY_ADMIN_TOKEN_PATTERN = /\bshpat_[A-Za-z0-9]{10,}\b/;
 var CLERK_SECRET_ASSIGNMENT_PATTERN = /\bCLERK_SECRET_KEY\b[^"'\r\n]*["'](?:sk_(?:live|test)_[A-Za-z0-9]{10,})["']/i;
 var CLERK_NEARBY_SECRET_PATTERN = /\bclerk\b.*\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b|\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b.*\bclerk\b/i;
 var USE_CLIENT = /^['"]use client['"];?\s*$/m;
+var TB003_WEBHOOK_TOKENS = /* @__PURE__ */ new Set(["webhook", "webhooks"]);
+var TB003_PROVIDERS = ["stripe", "clerk", "shopify", "github"];
+var TB003_PROVIDER_LABELS = {
+  stripe: "Stripe",
+  clerk: "Clerk",
+  shopify: "Shopify",
+  github: "GitHub"
+};
+var TB003_ROUTE_LITERAL_PATTERN = /["'`][^"'`\r\n]*(?:\/api\/|webhooks?)[^"'`\r\n]*["'`]/g;
+var TB003_RELATIVE_IMPORT_PATTERN = /(?:import[\s\S]*?from\s*["'](\.{1,2}\/[^"']+)["']|require\(\s*["'](\.{1,2}\/[^"']+)["']\s*\))/g;
+var TB003_LOCAL_HELPER_MARKER = /(verifyWebhook|verifySignature|validateSignature|validateHmac|constructEvent|webhook|signature|hmac|svix|stripe|shopify|github|clerk)/i;
+var TB003_PAYLOAD_READ_PATTERNS = [
+  /\bawait\s+(?:request|req)\.json\s*\(\s*\)/i,
+  /\b(?:request|req)\.json\s*\(\s*\)/i,
+  /\bawait\s+(?:request|req)\.text\s*\(\s*\)/i,
+  /\b(?:request|req)\.text\s*\(\s*\)/i,
+  /\b(?:req|request)\.body\b/i,
+  /\bformData\s*\(\s*\)/i,
+  /\brawBody\b/i,
+  /\b(?:getRawBody|buffer)\s*\(/i
+];
+var TB003_DANGEROUS_SINK_PATTERNS = [
+  /\.(?:insert|update|upsert|delete|create|createMany|save)\s*\(/i,
+  /\b[a-z0-9_]*(?:db|database|prisma|supabase|repo|repository|model|table|collection)[a-z0-9_]*\s*\.\s*set\s*\(/i,
+  /\bfetch\s*\(\s*["'`]https?:\/\//i,
+  /\baxios(?:\.(?:get|post|put|patch|delete))?\s*\(\s*["'`]https?:\/\//i,
+  /\b[a-z0-9_]*(?:queue|job|task|worker|workflow)[a-z0-9_]*\s*\.\s*(?:add|enqueue|dispatch|publish|trigger|schedule|send)\s*\(/i,
+  /\b[a-z0-9_]*(?:payment|subscription|account|user|member|customer|role|billing)[a-z0-9_]*\s*\.\s*(?:create|update|delete|cancel|refund|grant|revoke)\s*\(/i
+];
+var TB003_VERIFY_CALL_PATTERN = /\b(?:verify|validate)[A-Za-z0-9_]*(?:Webhook|Signature|Hmac|Event)?\s*\(/i;
+var TB003_CRYPTO_VERIFY_PATTERN = /\b(?:createHmac|timingSafeEqual)\s*\(/i;
+var TB003_SIGNATURE_INTENT_PATTERN = /\b(?:verify|validate)[A-Za-z0-9_]*(?:Webhook|Signature|Hmac|Event)|\b(?:signature|hmac|webhookSecret|webhook_secret)\b/i;
 function normalizePath(relativePath) {
   return relativePath.replaceAll("\\", "/");
 }
@@ -154,6 +195,16 @@ function createTb002Match(line, message) {
     confidence: "confirmed"
   };
 }
+function createTb003Match(provider, content, payloadIndex) {
+  return {
+    line: lineNumberFromIndex(content, payloadIndex),
+    message: `${TB003_PROVIDER_LABELS[provider]} webhook route reads payload and reaches a dangerous sink without deterministic signature verification evidence.`,
+    exploitPath: TB003_EXPLOIT_PATH,
+    patch: TB003_PATCH,
+    severity: "critical",
+    confidence: "confirmed"
+  };
+}
 function collectPolicyStatements(content) {
   const statements = [];
   for (const match of content.matchAll(/create\s+policy[\s\S]*?(?:;|$)/gi)) {
@@ -222,6 +273,117 @@ function collectFirebaseRuleFindings(file) {
   }
   return findings;
 }
+function isTb003SupportedRouteFile(relativePath) {
+  return TB003_SUPPORTED_ROUTE_PATH_PATTERNS.some((pattern) => pattern.test(relativePath));
+}
+function tokenizeWebhookEvidence(value) {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+function getKnownWebhookProvider(value) {
+  const tokens = tokenizeWebhookEvidence(value);
+  if (!tokens.some((token) => TB003_WEBHOOK_TOKENS.has(token))) {
+    return null;
+  }
+  for (const provider of TB003_PROVIDERS) {
+    if (tokens.includes(provider)) {
+      return provider;
+    }
+  }
+  return null;
+}
+function getTb003RouteProvider(file) {
+  const relativePath = normalizePath(file.relativePath);
+  if (!isTb003SupportedRouteFile(relativePath)) {
+    return null;
+  }
+  const providerFromPath = getKnownWebhookProvider(relativePath);
+  if (providerFromPath) {
+    return providerFromPath;
+  }
+  for (const match of file.content.matchAll(TB003_ROUTE_LITERAL_PATTERN)) {
+    const providerFromLiteral = getKnownWebhookProvider(match[0]);
+    if (providerFromLiteral) {
+      return providerFromLiteral;
+    }
+  }
+  return null;
+}
+function findFirstMatchIndex(content, patterns) {
+  let earliestIndex = Number.POSITIVE_INFINITY;
+  for (const pattern of patterns) {
+    const match = pattern.exec(content);
+    if ((match?.index ?? Number.POSITIVE_INFINITY) < earliestIndex) {
+      earliestIndex = match?.index ?? Number.POSITIVE_INFINITY;
+    }
+  }
+  return Number.isFinite(earliestIndex) ? earliestIndex : -1;
+}
+function hasRelativeVerificationHelperImport(content) {
+  for (const match of content.matchAll(TB003_RELATIVE_IMPORT_PATTERN)) {
+    const snippet = match[0] ?? "";
+    const importPath = match[1] ?? match[2] ?? "";
+    if (!importPath.startsWith("./") && !importPath.startsWith("../")) {
+      continue;
+    }
+    if (TB003_LOCAL_HELPER_MARKER.test(snippet)) {
+      return true;
+    }
+  }
+  return false;
+}
+function hasStripeVerification(content) {
+  if (/(?:^|\W)(?:constructEvent\(|webhooks\.constructEvent\(|stripe\.webhooks\.constructEvent\()/i.test(content)) {
+    return true;
+  }
+  return /stripe-signature/i.test(content) && (TB003_CRYPTO_VERIFY_PATTERN.test(content) || TB003_VERIFY_CALL_PATTERN.test(content));
+}
+function hasClerkVerification(content) {
+  if (/\bverifyWebhook\s*\(/i.test(content)) {
+    return true;
+  }
+  const hasSvixWebhook = /(from\s+["']svix["']|require\(\s*["']svix["']\s*\))/i.test(content) && /\bWebhook\s*\(/i.test(content) && /\.verify\s*\(/i.test(content);
+  if (hasSvixWebhook) {
+    return true;
+  }
+  const hasSvixHeaders = /svix-id/i.test(content) || /svix-timestamp/i.test(content) || /svix-signature/i.test(content);
+  return hasSvixHeaders && (TB003_VERIFY_CALL_PATTERN.test(content) || /\.verify\s*\(/i.test(content));
+}
+function hasShopifyVerification(content) {
+  if (/\bauthenticate\.webhook\s*\(/i.test(content)) {
+    return true;
+  }
+  if (/\bvalidateHmac\s*\(/i.test(content) || /\bshopify\.webhooks\.validate\s*\(/i.test(content)) {
+    return true;
+  }
+  return /x-shopify-hmac-sha256/i.test(content) && TB003_CRYPTO_VERIFY_PATTERN.test(content);
+}
+function hasGithubVerification(content) {
+  if (/x-hub-signature-256/i.test(content) && /createHmac\s*\(/i.test(content) && /timingSafeEqual\s*\(/i.test(content)) {
+    return true;
+  }
+  return /x-hub-signature-256/i.test(content) && /\bverify[A-Za-z0-9_]*(?:Signature|Hmac)\s*\(/i.test(content);
+}
+function hasPlausibleCustomVerificationIntent(provider, content) {
+  const providerMarkers = {
+    stripe: /stripe-signature|constructEvent|STRIPE_WEBHOOK_SECRET/i,
+    clerk: /svix-(?:id|timestamp|signature)|CLERK_WEBHOOK_SECRET|verifyWebhook/i,
+    shopify: /x-shopify-hmac-sha256|SHOPIFY_WEBHOOK_SECRET|validateHmac/i,
+    github: /x-hub-signature-256|GITHUB_WEBHOOK_SECRET|verify[A-Za-z0-9_]*(?:Signature|Hmac)/i
+  };
+  return providerMarkers[provider].test(content) && TB003_SIGNATURE_INTENT_PATTERN.test(content);
+}
+function hasProviderVerification(provider, content) {
+  switch (provider) {
+    case "stripe":
+      return hasStripeVerification(content);
+    case "clerk":
+      return hasClerkVerification(content);
+    case "shopify":
+      return hasShopifyVerification(content);
+    case "github":
+      return hasGithubVerification(content);
+  }
+}
 function matchExposedSupabaseServiceRoleKey(file) {
   if (!isClientSideFile(file)) {
     return [];
@@ -252,6 +414,30 @@ function matchDestructivePublicDbRules(file) {
   }
   return [];
 }
+function matchUnsignedKnownProviderWebhook(file) {
+  const provider = getTb003RouteProvider(file);
+  if (!provider) {
+    return [];
+  }
+  const payloadIndex = findFirstMatchIndex(file.content, TB003_PAYLOAD_READ_PATTERNS);
+  if (payloadIndex === -1) {
+    return [];
+  }
+  const dangerousSinkIndex = findFirstMatchIndex(file.content, TB003_DANGEROUS_SINK_PATTERNS);
+  if (dangerousSinkIndex === -1 || dangerousSinkIndex < payloadIndex) {
+    return [];
+  }
+  if (hasRelativeVerificationHelperImport(file.content)) {
+    return [];
+  }
+  if (hasProviderVerification(provider, file.content)) {
+    return [];
+  }
+  if (hasPlausibleCustomVerificationIntent(provider, file.content)) {
+    return [];
+  }
+  return [createTb003Match(provider, file.content, payloadIndex)];
+}
 var EXPOSED_SUPABASE_SERVICE_ROLE_RULE = {
   ruleId: TB001_RULE_ID,
   severity: "critical",
@@ -264,9 +450,16 @@ var DESTRUCTIVE_PUBLIC_DB_RULE = {
   confidence: "confirmed",
   matchFile: matchDestructivePublicDbRules
 };
+var UNSIGNED_KNOWN_PROVIDER_WEBHOOK_RULE = {
+  ruleId: TB003_RULE_ID,
+  severity: "critical",
+  confidence: "confirmed",
+  matchFile: matchUnsignedKnownProviderWebhook
+};
 var SCANNER_RULES = [
   EXPOSED_SUPABASE_SERVICE_ROLE_RULE,
-  DESTRUCTIVE_PUBLIC_DB_RULE
+  DESTRUCTIVE_PUBLIC_DB_RULE,
+  UNSIGNED_KNOWN_PROVIDER_WEBHOOK_RULE
 ];
 
 // ../core/dist/index.js

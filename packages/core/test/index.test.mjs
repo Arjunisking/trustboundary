@@ -36,7 +36,7 @@ test("@trustboundary/core walks fixture files as untrusted text", async () => {
   ]);
 });
 
-test("@trustboundary/core detects only TB001 and TB002 in normal V1 automated scans", async () => {
+test("@trustboundary/core detects only TB001, TB002, and TB003 in normal V1 automated scans", async () => {
   const findings = await scanRepository(fixtureRoot);
 
   assert.deepEqual(findings, [
@@ -54,6 +54,20 @@ test("@trustboundary/core detects only TB001 and TB002 in normal V1 automated sc
         "Move the secret to server-only code or a secret manager. Do not expose service, private, admin, token, or server keys to browser bundles; use publishable or anon keys instead."
     },
     {
+      id: "TB003:app/api/webhooks/stripe/route.ts:2",
+      ruleId: "TB003",
+      severity: "critical",
+      confidence: "confirmed",
+      file: "app/api/webhooks/stripe/route.ts",
+      line: 2,
+      message:
+        "Stripe webhook route reads payload and reaches a dangerous sink without deterministic signature verification evidence.",
+      exploitPath:
+        "An attacker can forge a provider webhook event and trigger state changes because the route processes webhook payloads without deterministic signature verification evidence.",
+      patch:
+        "Verify the provider signature in the same route or through a clearly named local verification helper before mutating data, calling external APIs, or dispatching jobs."
+    },
+    {
       id: "TB002:firestore.rules:5",
       ruleId: "TB002",
       severity: "critical",
@@ -69,7 +83,7 @@ test("@trustboundary/core detects only TB001 and TB002 in normal V1 automated sc
   ]);
 });
 
-test("@trustboundary/core keeps dormant fixtures non-blocking outside TB001 and TB002 boundaries", async () => {
+test("@trustboundary/core keeps out-of-scope fixtures non-blocking outside TB001, TB002, and TB003 boundaries", async () => {
   const findings = await scanRepository(fixtureRoot);
 
   assert.equal(
@@ -94,6 +108,10 @@ test("@trustboundary/core keeps dormant fixtures non-blocking outside TB001 and 
   );
   assert.equal(
     findings.some((finding) => finding.file === "app/api/health/route.ts"),
+    false
+  );
+  assert.equal(
+    findings.some((finding) => finding.file === "app/api/webhook/orders/route.ts"),
     false
   );
   assert.equal(

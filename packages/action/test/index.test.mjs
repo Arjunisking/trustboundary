@@ -53,8 +53,8 @@ test("@trustboundary/action fails for Confirmed Critical findings", async () => 
   assert.equal(result.blocked, true);
   assert.equal(result.exitCode, 1);
   assert.equal(result.enforcementEnabled, true);
-  assert.equal(result.summary.confirmedCriticalCount, 2);
-  assert.match(formatActionSummary(result), /Confirmed Critical findings: 2/);
+  assert.equal(result.summary.confirmedCriticalCount, 3);
+  assert.match(formatActionSummary(result), /Confirmed Critical findings: 3/);
 });
 
 test("@trustboundary/action passes for clean scans", async () => {
@@ -88,7 +88,7 @@ test("@trustboundary/action can disable enforcement", async () => {
   assert.equal(result.exitCode, 0);
 });
 
-test("@trustboundary/action does not block a fixture without TB001 or TB002 evidence", async () => {
+test("@trustboundary/action does not block a fixture without TB001, TB002, or TB003 evidence", async () => {
   const unmatchedDir = await mkdtemp(path.join(os.tmpdir(), "trustboundary-action-unmatched-"));
   await writeFile(
     path.join(unmatchedDir, "route.ts"),
@@ -125,8 +125,8 @@ test("@trustboundary/action writes declared outputs", async () => {
   await writeActionOutputs(createActionOutputs(result), outputFile);
   const outputContents = await readFile(outputFile, "utf8");
 
-  assert.match(outputContents, /^total_findings=2/m);
-  assert.match(outputContents, /^confirmed_critical_count=2/m);
+  assert.match(outputContents, /^total_findings=3/m);
+  assert.match(outputContents, /^confirmed_critical_count=3/m);
   assert.match(outputContents, /^blocked=true/m);
   assert.match(outputContents, /^report_path=.*report\.html/m);
 });
