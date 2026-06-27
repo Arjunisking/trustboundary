@@ -2,10 +2,10 @@
 
 This file is retained as a compatibility entry point.
 
-Current V1 automated rule source of truth:
+Current released V1.1.0 automated rule source of truth:
 - `docs/rules.md`
 
-Current V1 scope:
+Current V1.1.0 active automated scope:
 - exactly three automated blocking rules
 - no automated advisory rules
 - blocker evidence limited to deterministic committed repository evidence
@@ -20,3 +20,5 @@ Documentation-only, non-automated V1 areas:
 - Sensitive Route Without Auth
 - Public INSERT Advisory
 - Dangerous AI-Agent Tool detection
+
+These are manual-review or roadmap topics only. They are not active scanner enforcement.

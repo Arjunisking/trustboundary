@@ -29,6 +29,11 @@ Finding fields:
 - Likely: strong pattern but missing context
 - Unverified: scanner lacks required evidence
 
+Current V1.1.0 automated blockers emit `critical` plus `confirmed` only:
+- `TB001`
+- `TB002`
+- `TB003`
+
 ## Default gating
 - all branches: block only Confirmed Critical
 - suppressed critical findings remain visible in reports but do not fail CI

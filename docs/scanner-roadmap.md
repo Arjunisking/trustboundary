@@ -38,4 +38,4 @@ Future rules should keep same constraints:
 - no script running inside scanned repos
 - blocker status only when evidence is deterministic
 
-Warn-only or advisory automation can be reconsidered after V1, but it is out of scope for current release.
+Warn-only or non-blocking automation can be reconsidered after V1, but it is out of scope for current release.
