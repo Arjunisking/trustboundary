@@ -1,0 +1,38 @@
+{
+  "name": "trustboundary-security-skills",
+  "version": "0.1.0",
+  "description": "Defensive Codex skills for TrustBoundary-style security review and hardening.",
+  "author": {
+    "name": "TrustBoundary contributors",
+    "url": "https://github.com/Arjunisking/trustboundary"
+  },
+  "homepage": "https://github.com/Arjunisking/trustboundary",
+  "repository": "https://github.com/Arjunisking/trustboundary",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "trustboundary",
+    "nextjs",
+    "supabase",
+    "firebase",
+    "webhooks",
+    "ai-agents"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TrustBoundary Security Skills",
+    "shortDescription": "Defensive app security hardening skills.",
+    "longDescription": "TrustBoundary Security Skills provides focused Codex skills for authorized code review, defensive hardening, and safe security education across secrets, database policies, webhooks, authorization, mutations, AI-agent boundaries, logs, errors, and TrustBoundary educational copy.",
+    "developerName": "TrustBoundary contributors",
+    "category": "Security",
+    "capabilities": [
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use TrustBoundary skills to review app security boundaries.",
+      "Harden this webhook handler with provider verification.",
+      "Review this route for ownership and tenant checks."
+    ],
+    "brandColor": "#00D084"
+  }
+}
