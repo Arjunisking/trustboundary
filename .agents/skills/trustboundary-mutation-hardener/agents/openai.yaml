@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Mutation Hardener"
+  short_description: "Help with Trustboundary Mutation Hardener tasks"
+  default_prompt: "Use -mutation-hardener to review or fix unsafe mutation flows, mass assignment, and writable field boundaries."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Education Safe Writer"
+  short_description: "Help with Trustboundary Education Safe Writer tasks"
+  default_prompt: "Use -education-safe-writer to write defensive TrustBoundary security docs, report copy, and safe educational guidance."

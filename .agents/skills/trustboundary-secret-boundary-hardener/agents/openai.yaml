@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Secret Boundary Hardener"
+  short_description: "Help with Trustboundary Secret Boundary Hardener tasks"
+  default_prompt: "Use -secret-boundary-hardener to review or fix client-side secret exposure, NEXT_PUBLIC misuse, and server-only key boundaries."

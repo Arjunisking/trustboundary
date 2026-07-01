@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Logs Errors Hardener"
+  short_description: "Help with Trustboundary Logs Errors Hardener tasks"
+  default_prompt: "Use -logs-errors-hardener to review or fix secret redaction, safe errors, and production logging boundaries."

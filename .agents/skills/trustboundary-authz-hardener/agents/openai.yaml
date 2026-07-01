@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Authz Hardener"
+  short_description: "Help with Trustboundary Authz Hardener tasks"
+  default_prompt: "Use -authz-hardener to review or fix authorization, ownership, tenant scope, and admin route boundaries."

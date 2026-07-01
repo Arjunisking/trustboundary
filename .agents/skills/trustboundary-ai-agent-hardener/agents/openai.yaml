@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Ai Agent Hardener"
+  short_description: "Help with Trustboundary Ai Agent Hardener tasks"
+  default_prompt: "Use -ai-agent-hardener to review or fix AI-agent trust boundaries, tool permissions, and prompt-safety controls."

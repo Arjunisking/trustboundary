@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Rls Policy Hardener"
+  short_description: "Help with Trustboundary Rls Policy Hardener tasks"
+  default_prompt: "Use -rls-policy-hardener to review or fix Supabase, Postgres, Firebase, Firestore, or storage policy hardening."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trustboundary Webhook Hardener"
+  short_description: "Help with Trustboundary Webhook Hardener tasks"
+  default_prompt: "Use -webhook-hardener to review or fix webhook verification, replay resistance, and side-effect boundaries."
