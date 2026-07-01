@@ -67,7 +67,41 @@ TrustBoundary does not currently enforce:
 * broken authorization scanning
 * broad webhook or AI-agent abuse scanning
 
-Those categories may exist in older planning docs or historical prototypes, but they are not active V1 automated blockers.
+Those categories may exist in older planning docs, manual-review docs, or historical prototypes, but they are not active V1 automated blockers.
+
+## Defensive Security Learning Docs
+
+TrustBoundary now includes defensive education docs that explain common ways AI-generated apps become vulnerable.
+
+These docs are for prevention, review, and product education. They do not expand automated scanner enforcement.
+
+| Doc                                                                  | Purpose                                                                                                                                                                        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`docs/security-learning-model.md`](docs/security-learning-model.md) | Defines how TrustBoundary explains security risks safely without turning education into enforcement claims.                                                                    |
+| [`docs/attack-patterns.md`](docs/attack-patterns.md)                 | Catalogs common defensive attack patterns such as URL/object ID tampering, unsafe mutation, prompt injection, unsigned webhooks, XSS, SSRF, CORS issues, and insecure uploads. |
+| [`docs/rule-to-attack-map.md`](docs/rule-to-attack-map.md)           | Maps current automated blockers, future advisory candidates, docs-only topics, fixture examples, and intentional non-coverage.                                                 |
+
+Important boundary:
+
+```text
+If TrustBoundary explains a pattern, that does not mean TrustBoundary detects or blocks it.
+```
+
+Current enforcement still means only:
+
+```text
+TB001, TB002, TB003
+```
+
+The learning docs intentionally separate patterns into:
+
+| Status      | Meaning                                                                                                         |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `Blocker`   | Active automated detection exists today and can block when Confirmed Critical evidence is proven.               |
+| `Advisory`  | Important risk that may support future non-blocking educational surfacing, but is not active enforcement today. |
+| `Docs-only` | Defensive education only because deterministic repo evidence would be too broad, runtime-dependent, or noisy.   |
+
+This keeps TrustBoundary useful without becoming a fake “complete security scanner,” which would be both wrong and deeply on-brand for the modern software industry.
 
 ## Rule Boundaries
 
@@ -127,6 +161,35 @@ Examples of verification evidence that can suppress TB003:
 * local helper imports such as `verifyWebhook`, `verifySignature`, `validateHmac`, or `constructEvent`
 
 Unsupported providers and ambiguous webhook routes pass by design.
+
+## What TrustBoundary Teaches But Does Not Block Today
+
+The defensive learning docs explain broader risks so builders understand what to review manually.
+
+These include:
+
+* URL/object ID tampering
+* broken authorization
+* admin route abuse
+* unsafe mutation
+* mass assignment
+* public storage bucket risk
+* webhook replay risk
+* prompt injection
+* excessive AI-agent permissions
+* sensitive data in AI context
+* SQL/raw query injection risk
+* XSS
+* CSRF
+* open redirect
+* path traversal
+* SSRF
+* CORS misconfiguration
+* missing rate limits
+* insecure file upload
+* secrets in logs/errors
+
+These are not active V1 automated blockers unless they directly map to `TB001`, `TB002`, or `TB003`.
 
 ## GitHub Action Usage
 
@@ -334,6 +397,8 @@ Clean report status:
 No Confirmed Critical issues found.
 ```
 
+Future report education may add defensive learning context under findings, but that must not change blocker logic, rule IDs, CLI behavior, JSON output, GitHub Action behavior, or clean-scan wording.
+
 ## Example Fixture
 
 `examples/insecure-next-supabase` is intentionally unsafe.
@@ -343,6 +408,8 @@ It exists to exercise TrustBoundary's active V1 blockers:
 * TB001 client-side secret exposure
 * TB002 destructive public RLS / DB rules
 * TB003 unsigned known provider webhook
+
+It also contains contrast examples that help explain manual-review and future advisory topics in the defensive learning docs.
 
 Do not copy fixture code into production apps.
 
@@ -411,6 +478,7 @@ uses: Arjunisking/trustboundary@v1
 * No LLM judgment for findings
 * No full-security claims
 * Clear exploit path and patch guidance
+* Defensive education without offensive instructions
 * Small V1 scope that developers can trust
 
 ## Known Limitations
@@ -425,7 +493,18 @@ It may miss:
 * cross-file dataflow
 * runtime-only configuration issues
 * broader authorization flaws
+* unsafe mutation issues
+* mass assignment issues
+* prompt injection issues
+* AI-agent permission issues
 * general input validation bugs
+* SQL/raw query injection risks
+* XSS risks
+* CSRF risks
+* SSRF risks
+* CORS misconfiguration
+* rate-limit and abuse-control gaps
+* insecure upload flows
 * non-committed secrets or deployment misconfiguration
 
 A clean TrustBoundary scan means only:
